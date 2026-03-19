@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lean Café Retrospective</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -93,18 +94,39 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
 .toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:var(--cream);padding:11px 18px;border-radius:var(--r);font-size:13px;z-index:9000;display:none;box-shadow:var(--sh-lg);max-width:320px}
 .toast.on{display:block;animation:fadeup .25s ease}
 @keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.infobox{background:var(--sky-l);border:1.5px solid rgba(58,107,138,.3);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:22px}
+.infobox{background:var(--sky-l);border:1.5px solid rgba(58,107,138,.3);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:20px}
 .infobox-title{font-weight:600;font-size:15px;color:var(--sky);margin-bottom:6px;display:flex;align-items:center;gap:7px}
-.infobox-text{font-size:13px;color:var(--ink2);line-height:1.7}
-.infobox-steps{margin-top:10px;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.infobox-steps{margin-top:8px;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:5px}
 .infobox-steps li{font-size:13px;color:var(--ink2);display:flex;align-items:flex-start;gap:8px}
 .infobox-steps li::before{content:'→';color:var(--sky);font-weight:600;flex-shrink:0}
-.teams-box{background:var(--lav-l);border:1.5px solid rgba(107,91,138,.3);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:22px}
-.teams-title{font-weight:600;font-size:14px;color:var(--lav);margin-bottom:6px;display:flex;align-items:center;gap:7px}
-.writer-badge{background:var(--rust-l);border:1.5px solid rgba(196,82,42,.3);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--rust);font-weight:500;display:flex;align-items:center;gap:8px;margin-top:8px}
+.teams-box{background:var(--lav-l);border:1.5px solid rgba(107,91,138,.3);border-radius:var(--r-lg);padding:16px 20px;margin-bottom:20px}
+.teams-title{font-weight:600;font-size:14px;color:var(--lav);margin-bottom:5px;display:flex;align-items:center;gap:7px}
 .char-count{font-size:11px;color:var(--ink4);text-align:right;margin-top:3px}
 .char-count.warn{color:var(--rust);font-weight:500}
-@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}.wrap{padding:18px 14px}h1{font-size:26px}}
+
+/* ── TIMER ── */
+.timer-wrap{
+  background:#fff;border:1px solid var(--bdr);border-radius:var(--r-lg);
+  padding:16px 22px;margin-bottom:20px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  box-shadow:var(--sh);transition:border-color .4s,background .4s;
+}
+.timer-wrap.warn{border-color:var(--gold);background:var(--gold-l);}
+.timer-wrap.danger{border-color:var(--rust);background:var(--rust-l);}
+.timer-display{
+  font-family:var(--mono);font-size:38px;font-weight:400;letter-spacing:-1px;
+  color:var(--ink);transition:font-size .3s,color .3s,font-weight .3s;
+  min-width:110px;text-align:center;
+}
+.timer-display.warn{color:var(--gold);font-size:44px;font-weight:500;}
+.timer-display.danger{color:var(--rust);font-size:52px;font-weight:700;}
+@keyframes timerPulse{0%,100%{opacity:1}50%{opacity:.6}}
+.timer-display.danger{animation:timerPulse 1s ease-in-out infinite;}
+.timer-label{font-size:12px;color:var(--ink3);margin-top:4px;text-align:center}
+.timer-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.timer-controls .inp{width:80px;font-family:var(--mono);text-align:center}
+
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}.wrap{padding:18px 14px}h1{font-size:26px}.timer-display{font-size:28px}.timer-display.warn{font-size:34px}.timer-display.danger{font-size:40px}}
 </style>
 </head>
 <body>
@@ -116,7 +138,7 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
       <div style="font-size:54px;margin-bottom:16px">☕</div>
       <h1 style="margin-bottom:12px">Lean Café<br>Retrospective</h1>
       <p style="color:var(--ink3);margin-bottom:8px;font-size:16px;line-height:1.75">A democratic retrospective tool for large groups.</p>
-      <p style="color:var(--ink4);font-size:13px;margin-bottom:32px;line-height:1.6">Everyone writes cards → everyone votes → top topics become discussion rooms → actions are captured → PDF report is generated.</p>
+      <p style="color:var(--ink4);font-size:13px;margin-bottom:32px;line-height:1.6">Everyone writes cards → votes → top topics become rooms → actions captured → PDF report.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
         <button id="go-setup" class="btn btn-ink btn-lg">☕ I am the Facilitator — Start Session</button>
         <button id="go-join"  class="btn btn-out btn-lg">→ I am a Participant — Join Session</button>
@@ -132,10 +154,7 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
     <button id="setup-back" class="btn btn-ghost btn-sm">← Back</button>
   </div>
   <div class="wrap" style="max-width:560px">
-    <div style="margin-bottom:22px">
-      <h2>Create a New Session</h2>
-      <p style="color:var(--ink3);margin-top:5px">Fill in the details below. You will get a link to share with your team.</p>
-    </div>
+    <div style="margin-bottom:22px"><h2>Create a New Session</h2><p style="color:var(--ink3);margin-top:5px">Fill in the details. You will get a shareable link.</p></div>
     <div class="card">
       <div class="fld"><label class="lbl">Session Title</label><input class="inp" id="f-title" placeholder="e.g. Q2 Sprint 8 Retrospective"></div>
       <div class="fld"><label class="lbl">Team Name</label><input class="inp" id="f-team" placeholder="e.g. Platform Team"></div>
@@ -159,10 +178,7 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
     <button id="join-back" class="btn btn-ghost btn-sm">← Back</button>
   </div>
   <div class="wrap" style="max-width:460px">
-    <div style="margin-bottom:22px">
-      <h2>Join a Session</h2>
-      <p style="color:var(--ink3);margin-top:5px">Enter the session code your facilitator shared with you.</p>
-    </div>
+    <div style="margin-bottom:22px"><h2>Join a Session</h2><p style="color:var(--ink3);margin-top:5px">Enter the session code your facilitator shared with you.</p></div>
     <div class="card">
       <div class="fld"><label class="lbl">Session Code</label><input class="inp" id="j-code" placeholder="e.g. RETRO-A1B2" style="font-family:var(--mono);letter-spacing:2px;text-transform:uppercase"></div>
       <div class="fld">
@@ -185,13 +201,13 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
     <div style="margin-bottom:22px">
       <div class="lbl" style="margin-bottom:7px">Session Created ✓</div>
       <h2 id="lnk-title"></h2>
-      <p style="color:var(--ink3);margin-top:5px">Share the link or code below with your participants before clicking "Go to Admin Panel".</p>
+      <p style="color:var(--ink3);margin-top:5px">Share the link or code with your participants before entering the admin panel.</p>
     </div>
     <div class="card" style="margin-bottom:14px">
       <label class="lbl">Participant Link — share this</label>
       <div class="lbox"><span id="lnk-url" style="flex:1"></span><button id="btn-copy" class="btn btn-ghost btn-sm">Copy</button></div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
-        <span style="font-size:12px;color:var(--ink3)">Or just share the code:</span>
+        <span style="font-size:12px;color:var(--ink3)">Or share the code:</span>
         <span id="lnk-code" style="font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:3px;color:var(--ink)"></span>
       </div>
     </div>
@@ -236,25 +252,14 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
       <button id="m-close" class="btn btn-ghost btn-sm" style="padding:5px 9px;flex-shrink:0">✕</button>
     </div>
 
-    <!-- Writer selection -->
-    <div class="card" style="margin-bottom:18px;background:var(--rust-l);border-color:rgba(196,82,42,.25)">
-      <div style="font-size:13px;color:var(--ink2);margin-bottom:10px">
-        <strong>📝 One person in this room must be the Scribe.</strong><br>
-        The Scribe types the root cause and actions on behalf of the group. Everyone else discusses out loud.
-      </div>
-      <div class="fld" style="margin-bottom:0">
-        <label class="lbl">Select Scribe for this room</label>
-        <select class="sel" id="m-scribe"></select>
-      </div>
-      <div id="m-scribe-badge" style="margin-top:8px;display:none">
-        <div class="writer-badge">✏️ <span id="m-scribe-name"></span> is the Scribe — only they should type below</div>
-      </div>
+    <div style="background:var(--rust-l);border:1.5px solid rgba(196,82,42,.25);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--ink2);line-height:1.65">
+      📝 <strong>Choose a Scribe before you start.</strong> The Scribe is one person in the room who types the root cause and actions on behalf of the whole group. Everyone else discusses out loud in the Teams breakout room. Agree on who the Scribe is before opening this panel.
     </div>
 
     <div class="fld">
       <label class="lbl">Root Cause — Why does this problem exist?</label>
-      <p style="font-size:12px;color:var(--ink3);margin-bottom:6px">Discuss with your group, then the Scribe types the agreed root cause here. Try asking "Why?" 5 times.</p>
-      <textarea class="txa" id="m-root" placeholder="e.g. We don't have a clear definition of done, which causes rework in every sprint because..."></textarea>
+      <p style="font-size:12px;color:var(--ink3);margin-bottom:6px">Discuss with your group, then the Scribe types the agreed root cause. Try asking "Why?" 5 times.</p>
+      <textarea class="txa" id="m-root" placeholder="e.g. We don't have a clear definition of done, which causes rework every sprint because..."></textarea>
     </div>
 
     <div style="margin-bottom:14px">
@@ -262,7 +267,7 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
         <label class="lbl" style="margin:0">Action Items</label>
         <button id="m-add-action" class="btn btn-ghost btn-sm">+ Add Action</button>
       </div>
-      <p style="font-size:12px;color:var(--ink3);margin-bottom:10px">For each action: write what needs to be done, who is responsible, and by when.</p>
+      <p style="font-size:12px;color:var(--ink3);margin-bottom:10px">For each action: what needs to be done, who is responsible, and by when.</p>
       <div id="m-actions"></div>
     </div>
 
@@ -279,57 +284,214 @@ h3{font-family:var(--serif);font-size:17px;font-weight:700}
 (function(){
 "use strict";
 
-/* ── STORAGE ─────────────────────────────── */
-var SKEY='lc3_sessions';
+/* ══════════════════════════════════════════
+   STORAGE
+══════════════════════════════════════════ */
+var SKEY='lc4_sessions';
 var sess=null;
-var me={name:'',isAdmin:false};
+var me={name:'',isAdmin:false,uid:''};
 var activeRoom=null;
 
-/* no polling interval — use BroadcastChannel + manual refresh only on phase change */
+/* BroadcastChannel — only used for phase changes, never re-renders input phases */
 var bc=null;
-try{ bc=new BroadcastChannel('lean_cafe_v3'); }catch(e){}
+try{bc=new BroadcastChannel('lean_cafe_v4');}catch(e){}
 
-function allSess(){ try{return JSON.parse(localStorage.getItem(SKEY)||'{}')}catch(e){return{}} }
-function persist(s){ var a=allSess(); a[s.id]=s; localStorage.setItem(SKEY,JSON.stringify(a)); sess=s; if(bc) bc.postMessage({sid:s.id}); }
-function load(id){ var a=allSess(); sess=a[id]||null; return sess; }
-function fresh(){ return sess?load(sess.id):null; }
-function genId(){ return 'RETRO-'+Math.random().toString(36).substr(2,4).toUpperCase(); }
+function allSess(){try{return JSON.parse(localStorage.getItem(SKEY)||'{}')}catch(e){return{}}}
+function persist(s){var a=allSess();a[s.id]=s;localStorage.setItem(SKEY,JSON.stringify(a));sess=s;if(bc)bc.postMessage({sid:s.id,phase:s.phase});}
+function load(id){var a=allSess();sess=a[id]||null;return sess;}
+function fresh(){return sess?load(sess.id):null;}
+function genId(){return 'RETRO-'+Math.random().toString(36).substr(2,4).toUpperCase();}
+function genUid(){return Math.random().toString(36).substr(2,10);}
 
-/* ── SCREEN ──────────────────────────────── */
+/* BroadcastChannel: only re-render on phase change to avoid clearing inputs */
+var _lastPhase=-1;
+if(bc){
+  bc.onmessage=function(e){
+    if(sess&&e.data&&e.data.sid===sess.id){
+      var s=fresh();
+      if(s&&s.phase!==_lastPhase){
+        _lastPhase=s.phase;
+        renderPhase();
+      }
+      /* timer sync */
+      if(s&&_timerRunning){
+        syncTimerFromStorage(s);
+      }
+    }
+  };
+}
+
+/* ══════════════════════════════════════════
+   TIMER STATE
+══════════════════════════════════════════ */
+var _timerInterval=null;
+var _timerRunning=false;
+var _timerEnd=0; /* epoch ms when timer ends */
+
+function startTimer(durationSeconds){
+  var s=fresh();
+  if(!s)return;
+  _timerEnd=Date.now()+(durationSeconds*1000);
+  s.timer={end:_timerEnd,running:true,total:durationSeconds};
+  persist(s);
+  _timerRunning=true;
+  if(_timerInterval)clearInterval(_timerInterval);
+  _timerInterval=setInterval(tickTimer,250);
+  tickTimer();
+}
+
+function stopTimer(){
+  _timerRunning=false;
+  if(_timerInterval){clearInterval(_timerInterval);_timerInterval=null;}
+  var s=fresh();
+  if(s){s.timer={end:0,running:false,total:0};persist(s);}
+  renderTimerWidget();
+}
+
+function syncTimerFromStorage(s){
+  if(s.timer&&s.timer.running&&s.timer.end){
+    _timerEnd=s.timer.end;
+    _timerRunning=true;
+    if(!_timerInterval) _timerInterval=setInterval(tickTimer,250);
+  } else {
+    _timerRunning=false;
+    if(_timerInterval){clearInterval(_timerInterval);_timerInterval=null;}
+  }
+}
+
+function tickTimer(){
+  renderTimerWidget();
+}
+
+function renderTimerWidget(){
+  var el=document.getElementById('timer-display');
+  var wrap=document.getElementById('timer-wrap');
+  var labelEl=document.getElementById('timer-label');
+  if(!el||!wrap)return;
+
+  if(!_timerRunning||!_timerEnd){
+    el.textContent='--:--';
+    el.className='timer-display';
+    wrap.className='timer-wrap';
+    if(labelEl)labelEl.textContent='Timer not started';
+    return;
+  }
+
+  var rem=Math.max(0,Math.ceil((_timerEnd-Date.now())/1000));
+  var mins=Math.floor(rem/60);
+  var secs=rem%60;
+  el.textContent=(mins<10?'0':'')+mins+':'+(secs<10?'0':'')+secs;
+
+  var s=fresh();
+  var total=(s&&s.timer&&s.timer.total)||60;
+  var pct=rem/total;
+
+  if(rem===0){
+    el.className='timer-display danger';
+    wrap.className='timer-wrap danger';
+    if(labelEl)labelEl.textContent="⏰ Time's up!";
+    _timerRunning=false;
+    if(_timerInterval){clearInterval(_timerInterval);_timerInterval=null;}
+  } else if(pct<=0.25){
+    el.className='timer-display danger';
+    wrap.className='timer-wrap danger';
+    if(labelEl)labelEl.textContent='Less than 25% time remaining!';
+  } else if(pct<=0.5){
+    el.className='timer-display warn';
+    wrap.className='timer-wrap warn';
+    if(labelEl)labelEl.textContent='Half the time used';
+  } else {
+    el.className='timer-display';
+    wrap.className='timer-wrap';
+    if(labelEl)labelEl.textContent='Timer running';
+  }
+}
+
+function buildTimerHTML(isAdmin){
+  var s=fresh();
+  var hasTimer=s&&s.timer&&s.timer.running;
+  if(hasTimer){syncTimerFromStorage(s);}
+
+  var adminControls=isAdmin
+    ? '<div class="timer-controls">'+
+        '<input class="inp" id="timer-mins" type="number" min="1" max="60" value="10" placeholder="min">'+
+        '<span style="font-size:13px;color:var(--ink3)">min</span>'+
+        '<button id="btn-timer-start" class="btn btn-sage btn-sm">▶ Start</button>'+
+        '<button id="btn-timer-stop" class="btn btn-ghost btn-sm">■ Stop</button>'+
+      '</div>'
+    : '<div style="font-size:12px;color:var(--ink3)">Set by facilitator</div>';
+
+  return '<div class="timer-wrap" id="timer-wrap">'+
+    '<div>'+
+      '<div class="timer-display" id="timer-display">--:--</div>'+
+      '<div class="timer-label" id="timer-label">Timer not started</div>'+
+    '</div>'+
+    adminControls+
+  '</div>';
+}
+
+function bindTimerControls(){
+  var startBtn=document.getElementById('btn-timer-start');
+  var stopBtn=document.getElementById('btn-timer-stop');
+  if(startBtn){
+    startBtn.addEventListener('click',function(){
+      var mins=parseInt(document.getElementById('timer-mins').value)||10;
+      startTimer(mins*60);
+      toast('Timer started: '+mins+' minutes');
+    });
+  }
+  if(stopBtn){
+    stopBtn.addEventListener('click',function(){
+      stopTimer();
+      toast('Timer stopped');
+    });
+  }
+  /* sync on load */
+  var s=fresh();
+  if(s&&s.timer&&s.timer.running){syncTimerFromStorage(s);}
+}
+
+/* Poll timer for participants (lightweight — only updates timer display) */
+var _timerPollId=null;
+function startTimerPoll(){
+  if(_timerPollId)clearInterval(_timerPollId);
+  _timerPollId=setInterval(function(){
+    var s=fresh();
+    if(s&&s.timer){syncTimerFromStorage(s);}
+    /* also check for phase change */
+    if(s&&s.phase!==_lastPhase){
+      _lastPhase=s.phase;
+      renderPhase();
+    }
+  },1500);
+}
+
+/* ══════════════════════════════════════════
+   SCREEN
+══════════════════════════════════════════ */
 function show(id){
   document.querySelectorAll('.scr').forEach(function(s){s.classList.remove('on');});
   document.getElementById(id).classList.add('on');
 }
 
-/* ── TOAST ───────────────────────────────── */
+/* ══════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════ */
 var _tt;
 function toast(msg){
   var t=document.getElementById('toast');
-  t.textContent=msg; t.classList.add('on');
-  clearTimeout(_tt); _tt=setTimeout(function(){t.classList.remove('on');},2800);
+  t.textContent=msg;t.classList.add('on');
+  clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('on');},2800);
 }
 
-/* ── ESC ─────────────────────────────────── */
+/* ══════════════════════════════════════════
+   ESCAPE
+══════════════════════════════════════════ */
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-/* ── PHASE NAMES ─────────────────────────── */
-var PHASES=['','Write Cards','Vote','Choose Room','Discuss','Report'];
-
-/* ── BROADCAST RECEIVER ──────────────────── */
-if(bc){
-  bc.onmessage=function(e){
-    if(sess && e.data && e.data.sid===sess.id){
-      var old=sess.phase;
-      var s=fresh();
-      if(s && s.phase!==old){
-        renderPhase();
-      }
-      /* do NOT re-render if same phase — that would clear inputs */
-    }
-  };
-}
-
-/* ── CREATE SESSION ──────────────────────── */
+/* ══════════════════════════════════════════
+   CREATE SESSION
+══════════════════════════════════════════ */
 function createSession(){
   var title=document.getElementById('f-title').value.trim()||'Retrospective';
   var team=document.getElementById('f-team').value.trim()||'Team';
@@ -337,24 +499,27 @@ function createSession(){
   var admin=(document.getElementById('f-admin').value||'').trim().slice(0,15);
   if(!admin){toast('Please enter your name');return;}
   var id=genId();
-  var s={id:id,title:title,team:team,votesPerPerson:votes,adminName:admin,
-         phase:1,cards:[],participants:[{name:admin,isAdmin:true,votesUsed:0}],
-         rooms:[],roomData:{},createdAt:new Date().toISOString()};
+  var uid=genUid();
+  var s={id:id,title:title,team:team,votesPerPerson:votes,adminName:admin,adminUid:uid,
+         phase:1,cards:[],participants:[{name:admin,uid:uid,isAdmin:true,votesUsed:0}],
+         rooms:[],roomData:{},timer:{running:false,end:0,total:0},createdAt:new Date().toISOString()};
   persist(s);
-  me={name:admin,isAdmin:true};
+  me={name:admin,isAdmin:true,uid:uid};
   var url=location.origin+location.pathname+'?session='+id;
   document.getElementById('lnk-title').textContent=title;
   document.getElementById('lnk-url').textContent=url;
   document.getElementById('lnk-code').textContent=id;
   document.getElementById('lnk-meta').innerHTML=
-    '<strong>'+esc(title)+'</strong><br>'+
-    'Team: <strong>'+esc(team)+'</strong> &nbsp;·&nbsp; '+
-    'Votes per person: <strong>'+votes+'</strong> &nbsp;·&nbsp; '+
-    'Facilitator: <strong>'+esc(admin)+'</strong>';
+    '<strong>'+esc(title)+'</strong><br>Team: <strong>'+esc(team)+'</strong> &nbsp;·&nbsp; '+
+    'Votes/person: <strong>'+votes+'</strong> &nbsp;·&nbsp; Facilitator: <strong>'+esc(admin)+'</strong>';
   show('s-link');
 }
 
-/* ── JOIN SESSION ────────────────────────── */
+/* ══════════════════════════════════════════
+   JOIN SESSION
+   Each join gets a unique uid so same-name
+   users are tracked independently
+══════════════════════════════════════════ */
 function joinSession(){
   var code=(document.getElementById('j-code').value||'').trim().toUpperCase();
   var name=(document.getElementById('j-name').value||'').trim().slice(0,15);
@@ -362,82 +527,86 @@ function joinSession(){
   if(!name){toast('Please enter your name');return;}
   var s=load(code);
   if(!s){toast('Session not found: '+code+' — check the code and try again');return;}
-  me={name:name,isAdmin:s.adminName===name};
-  if(!s.participants.find(function(p){return p.name===name;})){
-    s.participants.push({name:name,isAdmin:false,votesUsed:0});
+
+  /* Always create a new uid for this browser session — supports duplicate names */
+  var uid=genUid();
+  me={name:name,isAdmin:(s.adminName===name&&!s.participants.find(function(p){return p.isAdmin&&p.uid;})),uid:uid};
+
+  /* Check if THIS uid already joined (page refresh) — not by name */
+  var existing=s.participants.find(function(p){return p.uid===uid;});
+  if(!existing){
+    s.participants.push({name:name,uid:uid,isAdmin:false,votesUsed:0});
     persist(s);
-  } else { sess=s; }
+  } else {
+    sess=s;
+  }
   enterSession();
 }
 
-/* ── ENTER SESSION ───────────────────────── */
+/* ══════════════════════════════════════════
+   ENTER SESSION
+══════════════════════════════════════════ */
 function enterSession(){
   if(!sess)return;
   document.getElementById('ses-title').textContent=sess.title;
   document.getElementById('ses-user').textContent=me.name+(me.isAdmin?' (facilitator)':'');
   show('s-session');
+  _lastPhase=sess.phase;
   renderPhase();
+  startTimerPoll();
 }
 
-/* ── PHASE ROUTER ────────────────────────── */
+/* ══════════════════════════════════════════
+   PHASE ROUTER
+══════════════════════════════════════════ */
 function renderPhase(){
   if(!sess)return;
   updateSteps();
-  document.getElementById('ses-phase').textContent=PHASES[sess.phase]||'';
+  var labels=['','Write Cards','Vote','Choose Room','Discuss','Report'];
+  document.getElementById('ses-phase').textContent=labels[sess.phase]||'';
   ([null,p1,p2,p3,p4,p5])[sess.phase]();
 }
-
 function updateSteps(){
   for(var i=1;i<=5;i++){
     var el=document.getElementById('st-'+i);
     el.classList.remove('on','done');
-    if(i<sess.phase) el.classList.add('done');
-    if(i===sess.phase) el.classList.add('on');
+    if(i<sess.phase)el.classList.add('done');
+    if(i===sess.phase)el.classList.add('on');
   }
 }
-
 function setArea(html){document.getElementById('phase-area').innerHTML=html;}
 
-/* ── INFO BOX BUILDER ────────────────────── */
-function infoBox(icon,title,steps,extra){
-  var stepsHtml=steps.map(function(s){return '<li>'+s+'</li>';}).join('');
-  return '<div class="infobox">'+
-    '<div class="infobox-title">'+icon+' '+title+'</div>'+
-    '<ul class="infobox-steps">'+stepsHtml+'</ul>'+
-    (extra||'')+
-  '</div>';
+/* ── INFO BOX ── */
+function infoBox(icon,title,steps){
+  return '<div class="infobox"><div class="infobox-title">'+icon+' '+title+'</div>'+
+    '<ul class="infobox-steps">'+steps.map(function(s){return '<li>'+s+'</li>';}).join('')+'</ul></div>';
 }
-
 function adminBanner(text){
-  return '<div style="background:var(--rust-l);border:1.5px solid rgba(196,82,42,.3);border-radius:var(--r);padding:12px 16px;font-size:13px;color:var(--rust);font-weight:500;margin-bottom:16px">'+
+  return '<div style="background:var(--rust-l);border:1.5px solid rgba(196,82,42,.3);border-radius:var(--r);padding:12px 16px;font-size:13px;color:var(--rust);font-weight:500;margin-bottom:14px">'+
     '🎯 <strong>Facilitator action required:</strong> '+text+'</div>';
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    PHASE 1 — WRITE CARDS
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 function p1(){
-  /* Intentionally NOT auto-refreshing this phase so typing is never interrupted.
-     New cards from others appear only when user submits their own card or manually refreshes. */
   var s=fresh();
-  var myCards=s.cards.filter(function(c){return c.author===me.name;});
+  var myCards=s.cards.filter(function(c){return c.uid===me.uid;});
 
-  var info=infoBox('✍️','Your turn: Write your cards',
-    [
-      'Think about what went well, what went wrong, and what you want to improve.',
-      'Type ONE topic per card — keep it short and clear (e.g. "Our standups take too long").',
-      'Click <strong>Add Card</strong> after each one. You can add as many cards as you want.',
-      'You can see everyone\'s cards on the right — this is normal, all cards are public.',
-      'When everyone is done, the <strong>facilitator</strong> will open voting.'
-    ]
-  );
+  var info=infoBox('✍️','Your turn: Write your cards',[
+    'Think about what went well, what went wrong, and what you want to improve.',
+    'Type <strong>one topic per card</strong> — keep it short and clear.',
+    'Press <strong>Add Card</strong> after each one. Add as many as you like.',
+    'Everyone can see all cards — this is intentional.',
+    'When everyone is done, the <strong>facilitator</strong> will open voting.'
+  ]);
 
   var adminCtrl=me.isAdmin
-    ? adminBanner('When everyone has written their cards, click <strong>Open Voting</strong> to move to the next phase.')+
-      '<button id="p1-next" class="btn btn-rust" style="margin-bottom:22px">Open Voting →</button>'
-    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:16px">⏳ <strong>Waiting for facilitator</strong> to open voting. Keep writing cards!</div>';
+    ? adminBanner('When everyone has written their cards, click <strong>Open Voting</strong>.')+
+      '<button id="p1-next" class="btn btn-rust" style="margin-bottom:18px">Open Voting →</button>'
+    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:14px">⏳ <strong>Waiting for facilitator</strong> to open voting. Keep writing cards!</div>';
 
-  var myCardsList=myCards.length===0
+  var myList=myCards.length===0
     ? '<p style="color:var(--ink4);font-size:13px;padding:4px 0">You haven\'t added any cards yet.</p>'
     : myCards.map(function(c){
         return '<div style="font-size:13px;padding:8px 10px;background:var(--cream);border-radius:7px;border:1px solid var(--bdr);display:flex;align-items:flex-start;gap:7px">'+
@@ -446,9 +615,8 @@ function p1(){
         '</div>';
       }).join('');
 
-  /* Render all cards from storage */
   var allCards=s.cards.length===0
-    ? '<div style="text-align:center;padding:32px 20px;color:var(--ink4)"><div style="font-size:32px;margin-bottom:8px">📝</div><p>No cards yet — be the first to add one!</p></div>'
+    ? '<div style="text-align:center;padding:32px 20px;color:var(--ink4)"><div style="font-size:32px;margin-bottom:8px">📝</div><p>No cards yet — be the first!</p></div>'
     : '<div class="gauto">'+s.cards.map(function(c,i){
         return '<div class="sticky s'+(i%6)+'">'+
           '<div style="font-size:13px;line-height:1.5;flex:1">'+esc(c.text)+'</div>'+
@@ -458,65 +626,63 @@ function p1(){
 
   setArea(
     info+adminCtrl+
-    '<div class="g2" style="margin-bottom:28px">'+
+    buildTimerHTML(me.isAdmin)+
+    '<div class="g2" style="margin-bottom:24px">'+
       '<div class="card">'+
         '<label class="lbl">Add a new card</label>'+
-        '<textarea class="txa" id="card-text" placeholder="What do you want to discuss? Write one topic here..." rows="3"></textarea>'+
+        '<textarea class="txa" id="card-text" placeholder="What do you want to discuss? One topic per card..." rows="3"></textarea>'+
         '<button id="add-card" class="btn btn-ink" style="margin-top:10px;width:100%">Add Card ↵</button>'+
       '</div>'+
       '<div class="card">'+
         '<label class="lbl">My cards ('+myCards.length+')</label>'+
-        '<div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto">'+myCardsList+'</div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto">'+myList+'</div>'+
       '</div>'+
     '</div>'+
-    '<h3 style="margin-bottom:14px">All cards visible to everyone ('+s.cards.length+')</h3>'+
+    '<h3 style="margin-bottom:14px">All cards — visible to everyone ('+s.cards.length+')</h3>'+
     allCards
   );
 
-  /* Add card */
-  document.getElementById('add-card').addEventListener('click', function(){
+  bindTimerControls();
+
+  document.getElementById('add-card').addEventListener('click',function(){
     var t=(document.getElementById('card-text').value||'').trim();
     if(!t){toast('Please write something before adding a card');return;}
     var s2=fresh();
-    s2.cards.push({id:Date.now().toString(),text:t,author:me.name,votes:0,voters:[]});
+    s2.cards.push({id:Date.now().toString()+Math.random().toString(36).substr(2,4),
+      text:t,author:me.name,uid:me.uid,votes:0,voters:[]});
     persist(s2);
     renderPhase();
     toast('Card added ✓');
   });
-
-  /* Enter key in textarea */
   document.getElementById('card-text').addEventListener('keydown',function(e){
     if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();document.getElementById('add-card').click();}
   });
-
-  /* Delete card */
   document.querySelectorAll('.del-card').forEach(function(btn){
     btn.addEventListener('click',function(){
       var cid=this.getAttribute('data-id');
       var s2=fresh();
       var card=s2.cards.find(function(c){return c.id===cid;});
-      if(card&&card.author!==me.name&&!me.isAdmin){toast('You can only delete your own cards');return;}
+      if(card&&card.uid!==me.uid&&!me.isAdmin){toast('You can only delete your own cards');return;}
       s2.cards=s2.cards.filter(function(c){return c.id!==cid;});
-      persist(s2); renderPhase();
+      persist(s2);renderPhase();
     });
   });
-
-  /* Admin: open voting */
   if(me.isAdmin){
     document.getElementById('p1-next').addEventListener('click',function(){
       var s2=fresh();
       if(s2.cards.length<2){toast('Need at least 2 cards before opening voting');return;}
-      s2.phase=2; persist(s2); renderPhase(); toast('Voting is now open!');
+      s2.phase=2;persist(s2);_lastPhase=2;renderPhase();toast('Voting is now open!');
     });
   }
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    PHASE 2 — VOTE
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 function p2(){
   var s=fresh();
-  var part=s.participants.find(function(p){return p.name===me.name;})||{votesUsed:0};
+  /* find participant by uid */
+  var part=s.participants.find(function(p){return p.uid===me.uid;})||{votesUsed:0};
   var used=part.votesUsed||0;
   var left=s.votesPerPerson-used;
   var sorted=s.cards.slice().sort(function(a,b){return (b.votes||0)-(a.votes||0);});
@@ -525,23 +691,22 @@ function p2(){
   var tokens='';
   for(var i=0;i<s.votesPerPerson;i++) tokens+='<span class="token'+(i<used?' used':'')+'"></span> ';
 
-  var info=infoBox('🗳️','Your turn: Vote for the most important topics',
-    [
-      'You have <strong>'+s.votesPerPerson+' votes</strong>. You can spread them across different cards.',
-      'Click <strong>+ Vote</strong> on the topics you most want to discuss.',
-      'You can click <strong>✓ Voted</strong> again to take your vote back.',
-      'The cards with the most votes will become the discussion rooms.',
-      'When everyone is done voting, the <strong>facilitator</strong> will close voting and create rooms.'
-    ]
-  );
+  var info=infoBox('🗳️','Your turn: Vote for the most important topics',[
+    'You have <strong>'+s.votesPerPerson+' votes</strong> total. Spread them however you like.',
+    'Click <strong>+ Vote</strong> on the topics you most want to discuss.',
+    'Click <strong>✓ Voted</strong> again to take your vote back.',
+    'The cards with the most votes will become the discussion rooms.',
+    'When everyone is done, the <strong>facilitator</strong> will close voting and create rooms.'
+  ]);
 
   var adminCtrl=me.isAdmin
-    ? adminBanner('When everyone has voted, click <strong>Close Voting</strong>. You will then choose how many rooms to create.')+
-      '<button id="p2-next" class="btn btn-rust" style="margin-bottom:22px">Close Voting & Create Rooms →</button>'
-    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:16px">⏳ <strong>Waiting for facilitator</strong> to close voting.</div>';
+    ? adminBanner('When everyone has voted, click <strong>Close Voting</strong>. You will choose how many rooms to create.')+
+      '<button id="p2-next" class="btn btn-rust" style="margin-bottom:18px">Close Voting & Create Rooms →</button>'
+    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:14px">⏳ <strong>Waiting for facilitator</strong> to close voting.</div>';
 
   var cardsHtml=sorted.map(function(c,i){
-    var voted=(c.voters||[]).indexOf(me.name)>=0;
+    /* voted = uid-based */
+    var voted=(c.voters||[]).indexOf(me.uid)>=0;
     var canVote=!voted&&left>0;
     return '<div class="sticky s'+(i%6)+(voted?' sticky-voted':'')+'" style="cursor:default">'+
       '<div style="font-size:13px;line-height:1.5;flex:1">'+esc(c.text)+'</div>'+
@@ -559,18 +724,21 @@ function p2(){
 
   setArea(
     info+adminCtrl+
-    '<div class="card" style="margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">'+
+    buildTimerHTML(me.isAdmin)+
+    '<div class="card" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">'+
       '<div>'+
         '<div style="font-size:12px;color:var(--ink3);margin-bottom:3px">Your remaining votes</div>'+
         '<div style="font-family:var(--mono);font-size:28px;font-weight:700;color:'+(left===0?'var(--ink4)':'var(--rust)')+'">'+left+
           '<span style="font-size:13px;color:var(--ink4)"> / '+s.votesPerPerson+'</span>'+
         '</div>'+
       '</div>'+
-      '<div style="display:flex;gap:4px;flex-wrap:wrap;max-width:200px">'+tokens+'</div>'+
-      '<div style="font-size:12px;color:var(--ink3);text-align:right">'+totalVotes+' total votes cast<br>'+s.participants.length+' participants</div>'+
+      '<div style="display:flex;gap:3px;flex-wrap:wrap;max-width:200px">'+tokens+'</div>'+
+      '<div style="font-size:12px;color:var(--ink3);text-align:right">'+totalVotes+' total votes<br>'+s.participants.length+' participants</div>'+
     '</div>'+
     '<div class="gauto">'+cardsHtml+'</div>'
   );
+
+  bindTimerControls();
 
   document.querySelectorAll('.vbtn').forEach(function(btn){
     btn.addEventListener('click',function(){
@@ -579,20 +747,20 @@ function p2(){
       var alreadyVoted=this.getAttribute('data-voted')==='1';
       var s2=fresh();
       var card=s2.cards.find(function(c){return c.id===cid;});
-      var p2=s2.participants.find(function(p){return p.name===me.name;});
+      var p2=s2.participants.find(function(p){return p.uid===me.uid;});
       if(!card||!p2)return;
       if(alreadyVoted){
         card.votes=Math.max(0,(card.votes||0)-1);
-        card.voters=(card.voters||[]).filter(function(v){return v!==me.name;});
+        card.voters=(card.voters||[]).filter(function(v){return v!==me.uid;});
         p2.votesUsed=Math.max(0,(p2.votesUsed||0)-1);
       } else {
         if((p2.votesUsed||0)>=s2.votesPerPerson){toast('You have used all your votes');return;}
         card.votes=(card.votes||0)+1;
         if(!card.voters)card.voters=[];
-        card.voters.push(me.name);
+        card.voters.push(me.uid);
         p2.votesUsed=(p2.votesUsed||0)+1;
       }
-      persist(s2); renderPhase();
+      persist(s2);renderPhase();
     });
   });
 
@@ -600,62 +768,62 @@ function p2(){
     var nb=document.getElementById('p2-next');
     if(nb) nb.addEventListener('click',function(){
       var n=parseInt(prompt(
-        'HOW MANY DISCUSSION ROOMS?\n\n'+
-        'The top N voted cards will each become a room.\n'+
-        'Participants: '+sess.participants.length+'\n'+
-        'Suggested rooms: '+Math.max(2,Math.ceil(sess.participants.length/5))+'\n\n'+
-        'Enter number of rooms:',
+        'How many discussion rooms?\n\nParticipants: '+sess.participants.length+
+        '\nSuggestion: '+Math.max(2,Math.ceil(sess.participants.length/5))+
+        '\n\nEnter number of rooms:',
         Math.max(2,Math.ceil(sess.participants.length/5))
       ));
       if(!n||n<1)return;
       var s2=fresh();
-      var topCards=s2.cards.slice().sort(function(a,b){return (b.votes||0)-(a.votes||0);});
-      s2.rooms=topCards.slice(0,n).map(function(c,i){
-        return {id:'room'+i,cardId:c.id,title:c.text,votes:c.votes||0,participants:[],scribe:''};
+      var top=s2.cards.slice().sort(function(a,b){return (b.votes||0)-(a.votes||0);});
+      s2.rooms=top.slice(0,n).map(function(c,i){
+        return {id:'room'+i,cardId:c.id,title:c.text,votes:c.votes||0,participants:[]};
       });
       if(!s2.roomData)s2.roomData={};
-      s2.phase=3; persist(s2); renderPhase(); toast(n+' rooms created!');
+      s2.phase=3;persist(s2);_lastPhase=3;renderPhase();toast(n+' rooms created!');
     });
   }
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    PHASE 3 — CHOOSE ROOM
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 function p3(){
   var s=fresh();
-  var myRoom=s.rooms.find(function(r){return (r.participants||[]).indexOf(me.name)>=0;});
+  var myRoom=s.rooms.find(function(r){return (r.participants||[]).indexOf(me.uid)>=0;});
 
   var teamsBox='<div class="teams-box">'+
     '<div class="teams-title">💬 Microsoft Teams — Breakout Rooms</div>'+
     '<div style="font-size:13px;color:var(--ink2);line-height:1.7">'+
-      'The facilitator has (or will) create matching breakout rooms in Teams.<br>'+
-      '<strong>Join the Teams breakout room with the same number as the room you pick below.</strong><br>'+
-      'Example: if you click "Room 1" here → join <strong>Room 1</strong> in Teams breakout rooms.'+
-    '</div>'+
-  '</div>';
+      'The facilitator has (or will) open matching breakout rooms in Teams.<br>'+
+      '<strong>Join the Teams breakout room with the same number as the room you pick here.</strong><br>'+
+      'Example: pick Room 1 here → join <strong>Breakout Room 1</strong> in Teams.'+
+    '</div></div>';
 
-  var info=infoBox('🚪','Your turn: Choose a discussion room',
-    [
-      'Read the topic of each room below.',
-      'Click the room whose topic you want to discuss.',
-      'Then <strong>go to the matching Teams breakout room</strong> (same room number).',
-      'In Teams, pick one person to be the <strong>Scribe</strong> — they will type the root cause and actions into this tool.',
-      'When everyone has chosen a room, the facilitator will start the discussion phase.'
-    ]
-  );
+  var info=infoBox('🚪','Your turn: Choose a discussion room',[
+    'Read the topic of each room below.',
+    'Click the room whose topic you want to discuss.',
+    'Then <strong>go to the matching Teams breakout room</strong> (same room number).',
+    'In your Teams room, agree on who will be the <strong>Scribe</strong>.',
+    'When everyone has chosen, the facilitator will start the discussion phase.'
+  ]);
 
   var adminCtrl=me.isAdmin
     ? adminBanner('When everyone is in their rooms (here and in Teams), click <strong>Start Discussion</strong>.')+
-      '<button id="p3-next" class="btn btn-rust" style="margin-bottom:22px">Start Discussion →</button>'
-    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:16px">⏳ <strong>Waiting for facilitator</strong> to start discussion.</div>';
+      '<button id="p3-next" class="btn btn-rust" style="margin-bottom:18px">Start Discussion →</button>'
+    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:14px">⏳ <strong>Waiting for facilitator</strong> to start discussion.</div>';
 
   var roomsHtml=s.rooms.map(function(room,i){
     var isMine=myRoom&&myRoom.id===room.id;
-    var parts=(room.participants||[]);
-    var partsHtml=parts.length===0
+    var parts=room.participants||[];
+    /* show display names by looking up uids */
+    var partNames=parts.map(function(uid){
+      var p=s.participants.find(function(x){return x.uid===uid;});
+      return p?p.name:uid;
+    });
+    var partsHtml=partNames.length===0
       ? '<span style="font-size:12px;color:var(--ink4)">No one here yet</span>'
-      : parts.map(function(p){return '<span class="tag t-sky">'+esc(p)+'</span>';}).join('');
+      : partNames.map(function(n){return '<span class="tag t-sky">'+esc(n)+'</span>';}).join('');
     return '<div class="rcard'+(isMine?' mine':'')+'" data-rid="'+room.id+'">'+
       '<div class="rh">'+
         '<div style="flex:1">'+
@@ -665,77 +833,82 @@ function p3(){
         '<div style="font-family:var(--mono);font-size:12px;color:var(--ink3);background:var(--cream2);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0">⬆ '+room.votes+'</div>'+
       '</div>'+
       '<div class="rb">'+
-        '<div style="font-size:12px;font-weight:600;color:var(--lav);margin-bottom:6px">💬 Join Teams Breakout Room '+(i+1)+'</div>'+
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'+partsHtml+'</div>'+
-        '<div style="font-size:12px;color:var(--ink3)">'+parts.length+' participant'+(parts.length!==1?'s':'')+
+        '<div style="font-size:12px;font-weight:600;color:var(--lav);margin-bottom:6px">💬 → Teams Breakout Room '+(i+1)+'</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">'+partsHtml+'</div>'+
+        '<div style="font-size:12px;color:var(--ink3)">'+partNames.length+' participant'+(partNames.length!==1?'s':'')+
           (isMine?' &nbsp;·&nbsp; <strong style="color:var(--rust)">📍 You are here</strong>':'')+
         '</div>'+
-        (!isMine?'<div style="margin-top:8px;font-size:12px;color:var(--sky);font-weight:500">Click to join this room →</div>':
-                  '<div style="margin-top:8px;font-size:12px;color:var(--sage);font-weight:500">✓ You are in this room</div>')+
+        (!isMine
+          ?'<div style="margin-top:8px;font-size:12px;color:var(--sky);font-weight:500">Click to join this room →</div>'
+          :'<div style="margin-top:8px;font-size:12px;color:var(--sage);font-weight:500">✓ You have joined this room</div>')+
       '</div>'+
     '</div>';
   }).join('');
 
-  setArea(teamsBox+info+adminCtrl+'<div class="gauto">'+roomsHtml+'</div>');
+  setArea(teamsBox+info+adminCtrl+buildTimerHTML(me.isAdmin)+'<div class="gauto">'+roomsHtml+'</div>');
+  bindTimerControls();
 
   document.querySelectorAll('.rcard').forEach(function(card){
     card.addEventListener('click',function(){
       var rid=this.getAttribute('data-rid');
       var s2=fresh();
-      s2.rooms.forEach(function(r){r.participants=(r.participants||[]).filter(function(p){return p!==me.name;});});
+      /* remove this uid from all rooms */
+      s2.rooms.forEach(function(r){r.participants=(r.participants||[]).filter(function(u){return u!==me.uid;});});
       var room=s2.rooms.find(function(r){return r.id===rid;});
-      if(room){if(!room.participants)room.participants=[];room.participants.push(me.name);}
-      persist(s2); renderPhase();
-      toast('Joined Room '+(s2.rooms.indexOf(room)+1)+' — now go to Teams breakout room '+(s2.rooms.indexOf(room)+1));
+      if(room){if(!room.participants)room.participants=[];room.participants.push(me.uid);}
+      persist(s2);renderPhase();
+      if(room){
+        var idx=s2.rooms.indexOf(room);
+        toast('Joined Room '+(idx+1)+' — go to Teams Breakout Room '+(idx+1));
+      }
     });
   });
 
   if(me.isAdmin){
     var nb=document.getElementById('p3-next');
     if(nb) nb.addEventListener('click',function(){
-      var s2=fresh(); s2.phase=4; persist(s2); renderPhase(); toast('Discussion phase started!');
+      var s2=fresh();s2.phase=4;persist(s2);_lastPhase=4;renderPhase();toast('Discussion started!');
     });
   }
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    PHASE 4 — DISCUSS
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 function p4(){
   var s=fresh();
 
   var teamsBox='<div class="teams-box">'+
     '<div class="teams-title">💬 You should be in your Teams Breakout Room right now</div>'+
     '<div style="font-size:13px;color:var(--ink2);line-height:1.7">'+
-      'Discuss your topic with your group in Teams. The <strong>Scribe</strong> should click their room below and type the root cause and actions.'+
-    '</div>'+
-  '</div>';
+      'Discuss your topic with your group. The <strong>Scribe</strong> clicks their room card below and types the root cause and actions on behalf of the group.'+
+    '</div></div>';
 
-  var info=infoBox('💡','Your turn: Discuss, find root causes, define actions',
-    [
-      'Discuss your room\'s topic with your group in the Teams breakout room.',
-      'Agree on the <strong>root cause</strong>: ask "Why?" at least 5 times to find the real reason.',
-      'Define <strong>action items</strong>: concrete things to do, each with a responsible person and a due date.',
-      'The <strong>Scribe</strong> clicks the room card below and types everything in.',
-      'When all rooms are done, the facilitator ends the session and generates the PDF report.'
-    ]
-  );
+  var info=infoBox('💡','Your turn: Discuss, find root cause, define actions',[
+    'Discuss the room topic with your group in the Teams breakout room.',
+    'Agree on the <strong>root cause</strong>: ask "Why?" at least 5 times.',
+    'Define <strong>action items</strong>: what to do, who owns it, and by when.',
+    'The <strong>Scribe</strong> clicks the room card below to type everything in.',
+    'When all rooms are done, the facilitator ends the session and generates the PDF.'
+  ]);
 
   var adminCtrl=me.isAdmin
-    ? adminBanner('When all rooms have entered their root causes and actions, click <strong>Finish Session</strong> to generate the report.')+
-      '<button id="p4-next" class="btn btn-rust" style="margin-bottom:22px">Finish Session & Generate Report →</button>'
-    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:16px">⏳ <strong>Waiting for facilitator</strong> to finish the session.</div>';
+    ? adminBanner('When all rooms have entered root causes and actions, click <strong>Finish Session</strong>.')+
+      '<button id="p4-next" class="btn btn-rust" style="margin-bottom:18px">Finish Session & Generate Report →</button>'
+    : '<div style="background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:14px">⏳ <strong>Waiting for facilitator</strong> to finish the session.</div>';
 
   var roomsHtml=s.rooms.map(function(room,i){
     var data=(s.roomData&&s.roomData[room.id])||{};
     var acts=data.actions||[];
     var hasRoot=data.rootCause&&data.rootCause.trim();
-    var scribe=data.scribe||room.scribe||'';
-    var parts=(room.participants||[]).map(function(p){return '<span class="tag t-sky">'+esc(p)+'</span>';}).join('');
+    var parts=(room.participants||[]).map(function(uid){
+      var p=s.participants.find(function(x){return x.uid===uid;});
+      return p?p.name:uid;
+    });
+    var partsHtml=parts.map(function(n){return '<span class="tag t-sky">'+esc(n)+'</span>';}).join('');
     var actPrev=acts.slice(0,3).map(function(a){
       return '<div style="font-size:12px;padding:5px 9px;background:var(--rust-l);border-radius:6px;display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
-        '<span style="color:var(--rust)">→</span>'+
-        '<span style="flex:1;color:var(--ink2)">'+esc(a.text||'')+'</span>'+
+        '<span style="color:var(--rust)">→</span><span style="flex:1;color:var(--ink2)">'+esc(a.text||'')+'</span>'+
         (a.assignee?'<span class="tag t-gold">@'+esc(a.assignee)+'</span>':'')+
         (a.dueDate?'<span class="tag t-gray">'+esc(a.dueDate)+'</span>':'')+
       '</div>';
@@ -745,12 +918,11 @@ function p4(){
         '<div>'+
           '<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink4);margin-bottom:3px;font-family:var(--mono)">Room '+(i+1)+' · ⬆ '+room.votes+' votes</div>'+
           '<h3>'+esc(room.title)+'</h3>'+
-          '<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">'+parts+'</div>'+
-          (scribe?'<div style="margin-top:5px;font-size:12px;color:var(--rust)">✏️ Scribe: '+esc(scribe)+'</div>':'')+
+          '<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">'+partsHtml+'</div>'+
         '</div>'+
         '<div style="display:flex;gap:5px;flex-wrap:wrap">'+
-          (hasRoot?'<span class="tag t-sage">✓ Root cause entered</span>':'<span class="tag t-gray">⚠ No root cause yet</span>')+
-          (acts.length?'<span class="tag t-rust">'+acts.length+' action'+(acts.length>1?'s':'')+'</span>':'<span class="tag t-gray">No actions yet</span>')+
+          (hasRoot?'<span class="tag t-sage">✓ Root cause</span>':'<span class="tag t-gray">⚠ No root cause</span>')+
+          (acts.length?'<span class="tag t-rust">'+acts.length+' action'+(acts.length>1?'s':'')+'</span>':'<span class="tag t-gray">No actions</span>')+
         '</div>'+
       '</div>'+
       (hasRoot?'<div style="font-size:13px;padding:9px 11px;background:var(--sage-l);border-radius:7px;border-left:3px solid var(--sage);margin-bottom:8px;color:var(--ink2)">'+esc((data.rootCause||'').substring(0,120))+(data.rootCause.length>120?'…':'')+'</div>':'')+
@@ -759,7 +931,8 @@ function p4(){
     '</div>';
   }).join('');
 
-  setArea(teamsBox+info+adminCtrl+'<div style="display:grid;gap:14px">'+roomsHtml+'</div>');
+  setArea(teamsBox+info+adminCtrl+buildTimerHTML(me.isAdmin)+'<div style="display:grid;gap:14px">'+roomsHtml+'</div>');
+  bindTimerControls();
 
   document.querySelectorAll('[data-rid]').forEach(function(el){
     el.addEventListener('click',function(){
@@ -770,62 +943,30 @@ function p4(){
   if(me.isAdmin){
     var nb=document.getElementById('p4-next');
     if(nb) nb.addEventListener('click',function(){
-      var s2=fresh(); s2.phase=5; persist(s2); renderPhase();
+      var s2=fresh();s2.phase=5;persist(s2);_lastPhase=5;renderPhase();
     });
   }
 }
 
-/* ── ROOM MODAL ──────────────────────────── */
+/* ── ROOM MODAL ── */
 function openRoomModal(rid,idx){
   activeRoom=rid;
   var s=fresh();
   var room=s.rooms.find(function(r){return r.id===rid;});
   if(!room)return;
   if(!s.roomData)s.roomData={};
-  if(!s.roomData[rid])s.roomData[rid]={rootCause:'',actions:[],scribe:''};
+  if(!s.roomData[rid])s.roomData[rid]={rootCause:'',actions:[]};
   var data=s.roomData[rid];
-
   document.getElementById('m-lbl').textContent='Room '+(idx+1)+' · '+room.votes+' votes';
   document.getElementById('m-title').textContent=room.title;
   document.getElementById('m-root').value=data.rootCause||'';
-
-  /* populate scribe dropdown */
-  var sel=document.getElementById('m-scribe');
-  sel.innerHTML='<option value="">— Select the Scribe —</option>';
-  (room.participants||[]).forEach(function(p){
-    var opt=document.createElement('option');
-    opt.value=p; opt.textContent=p;
-    if(p===(data.scribe||room.scribe||'')) opt.selected=true;
-    sel.appendChild(opt);
-  });
-  /* also allow anyone not in room to be scribe */
-  if((room.participants||[]).length===0){
-    s.participants.forEach(function(p){
-      var opt=document.createElement('option');
-      opt.value=p.name; opt.textContent=p.name;
-      if(p.name===(data.scribe||'')) opt.selected=true;
-      sel.appendChild(opt);
-    });
-  }
-  updateScribeBadge(sel.value);
-  sel.onchange=function(){ updateScribeBadge(this.value); };
-
   renderModalActions(data.actions||[]);
   document.getElementById('room-overlay').classList.add('on');
 }
-
-function updateScribeBadge(name){
-  var badge=document.getElementById('m-scribe-badge');
-  var nameEl=document.getElementById('m-scribe-name');
-  if(name){badge.style.display='block';nameEl.textContent=name;}
-  else{badge.style.display='none';}
-}
-
 function closeRoomModal(){
   document.getElementById('room-overlay').classList.remove('on');
   activeRoom=null;
 }
-
 function renderModalActions(actions){
   var el=document.getElementById('m-actions');
   if(!actions.length){
@@ -838,89 +979,67 @@ function renderModalActions(actions){
         '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ink3)">Action '+(i+1)+'</span>'+
         '<button class="btn btn-ghost btn-sm rm-act" data-i="'+i+'" style="padding:3px 8px">Remove</button>'+
       '</div>'+
-      '<div class="fld" style="margin-bottom:8px">'+
-        '<label class="lbl">What needs to be done?</label>'+
-        '<input class="inp" value="'+esc(a.text||'')+'" placeholder="e.g. Create a definition of done document" data-i="'+i+'" data-f="text">'+
-      '</div>'+
-      '<div class="g2" style="gap:10px;margin-bottom:0">'+
-        '<div>'+
-          '<label class="lbl">Who is responsible? (Assignee)</label>'+
-          '<input class="inp" value="'+esc(a.assignee||'')+'" placeholder="e.g. John" data-i="'+i+'" data-f="assignee">'+
-        '</div>'+
-        '<div>'+
-          '<label class="lbl">Due Date</label>'+
-          '<input class="inp" type="date" value="'+esc(a.dueDate||'')+'" data-i="'+i+'" data-f="dueDate">'+
-        '</div>'+
+      '<div class="fld" style="margin-bottom:8px"><label class="lbl">What needs to be done?</label>'+
+        '<input class="inp" value="'+esc(a.text||'')+'" placeholder="e.g. Create a definition of done document" data-i="'+i+'" data-f="text"></div>'+
+      '<div class="g2" style="gap:10px">'+
+        '<div><label class="lbl">Assignee (who is responsible?)</label>'+
+          '<input class="inp" value="'+esc(a.assignee||'')+'" placeholder="e.g. John" data-i="'+i+'" data-f="assignee"></div>'+
+        '<div><label class="lbl">Due Date</label>'+
+          '<input class="inp" type="date" value="'+esc(a.dueDate||'')+'" data-i="'+i+'" data-f="dueDate"></div>'+
       '</div>'+
     '</div>';
   }).join('');
-
   el.querySelectorAll('input[data-f]').forEach(function(inp){
-    inp.addEventListener('change',function(){
-      var i=parseInt(this.getAttribute('data-i')),f=this.getAttribute('data-f');
-      var s=fresh();
-      if(s.roomData&&s.roomData[activeRoom]&&s.roomData[activeRoom].actions[i])
-        s.roomData[activeRoom].actions[i][f]=this.value;
-      persist(s);
-    });
-    inp.addEventListener('input',function(){
-      var i=parseInt(this.getAttribute('data-i')),f=this.getAttribute('data-f');
-      var s=fresh();
-      if(s.roomData&&s.roomData[activeRoom]&&s.roomData[activeRoom].actions[i])
-        s.roomData[activeRoom].actions[i][f]=this.value;
-      persist(s);
+    ['input','change'].forEach(function(ev){
+      inp.addEventListener(ev,function(){
+        var i=parseInt(this.getAttribute('data-i')),f=this.getAttribute('data-f');
+        var s=fresh();
+        if(s.roomData&&s.roomData[activeRoom]&&s.roomData[activeRoom].actions[i])
+          s.roomData[activeRoom].actions[i][f]=this.value;
+        persist(s);
+      });
     });
   });
-
   el.querySelectorAll('.rm-act').forEach(function(btn){
     btn.addEventListener('click',function(){
       var i=parseInt(this.getAttribute('data-i'));
       var s=fresh();
       if(s.roomData&&s.roomData[activeRoom]){
         s.roomData[activeRoom].actions.splice(i,1);
-        persist(s); renderModalActions(s.roomData[activeRoom].actions);
+        persist(s);renderModalActions(s.roomData[activeRoom].actions);
       }
     });
   });
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    PHASE 5 — REPORT
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 function p5(){
   var s=fresh();
   var totalVotes=s.cards.reduce(function(t,c){return t+(c.votes||0);},0);
   var totalAct=s.rooms.reduce(function(t,r){var d=s.roomData&&s.roomData[r.id];return t+(d&&d.actions?d.actions.length:0);},0);
-
-  var statsData=[
-    ['Participants',s.participants.length,'var(--sky)'],
-    ['Cards',s.cards.length,'var(--gold)'],
-    ['Votes',totalVotes,'var(--rust)'],
-    ['Rooms',s.rooms.length,'var(--lav)'],
-    ['Actions',totalAct,'var(--sage)']
-  ];
+  var statsData=[['Participants',s.participants.length,'var(--sky)'],['Cards',s.cards.length,'var(--gold)'],
+    ['Votes',totalVotes,'var(--rust)'],['Rooms',s.rooms.length,'var(--lav)'],['Actions',totalAct,'var(--sage)']];
   var statsHtml=statsData.map(function(sd){
     return '<div style="background:#fff;border:1px solid var(--bdr);border-radius:var(--r-lg);padding:14px;text-align:center;box-shadow:var(--sh)">'+
       '<div style="font-size:26px;font-family:var(--serif);font-weight:700;color:'+sd[2]+'">'+sd[1]+'</div>'+
-      '<div style="font-size:12px;color:var(--ink3);margin-top:2px">'+sd[0]+'</div>'+
-    '</div>';
+      '<div style="font-size:12px;color:var(--ink3);margin-top:2px">'+sd[0]+'</div></div>';
   }).join('');
-
   var sortedCards=s.cards.slice().sort(function(a,b){return (b.votes||0)-(a.votes||0);});
   var cardsHtml=sortedCards.map(function(c,i){
     return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--cream);border-radius:7px;border:1px solid var(--bdr)">'+
       '<span style="font-family:var(--mono);font-size:11px;color:var(--ink4);width:18px;text-align:right">'+(i+1)+'</span>'+
       '<span style="flex:1;font-size:13px">'+esc(c.text)+'</span>'+
       '<span class="tag t-rust">⬆ '+(c.votes||0)+'</span>'+
-      '<span style="font-size:11px;color:var(--ink4)">'+esc(c.author)+'</span>'+
-    '</div>';
+      '<span style="font-size:11px;color:var(--ink4)">'+esc(c.author)+'</span></div>';
   }).join('');
-
   var roomsHtml=s.rooms.map(function(room,i){
     var data=(s.roomData&&s.roomData[room.id])||{rootCause:'',actions:[]};
-    var parts=(room.participants||[]).map(function(p){return '<span class="tag t-sky">'+esc(p)+'</span>';}).join('');
+    var parts=(room.participants||[]).map(function(uid){var p=s.participants.find(function(x){return x.uid===uid;});return p?p.name:uid;});
+    var partsHtml=parts.map(function(n){return '<span class="tag t-sky">'+esc(n)+'</span>';}).join('');
     var actHtml=(data.actions||[]).length
-      ? (data.actions||[]).map(function(a,j){
+      ?(data.actions||[]).map(function(a,j){
           return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--rust-l);border-radius:7px;font-size:13px;flex-wrap:wrap">'+
             '<span style="color:var(--rust);font-weight:600">'+(j+1)+'.</span>'+
             '<span style="flex:1">'+esc(a.text||'(no description)')+'</span>'+
@@ -928,54 +1047,41 @@ function p5(){
             (a.dueDate?'<span class="tag t-gray">'+esc(a.dueDate)+'</span>':'')+
           '</div>';
         }).join('')
-      : '<p style="font-size:13px;color:var(--ink4);padding:8px 0">No actions recorded for this room.</p>';
+      :'<p style="font-size:13px;color:var(--ink4);padding:6px 0">No actions recorded.</p>';
     return '<div class="card" style="margin-bottom:14px;border-left:4px solid var(--rust)">'+
       '<div style="margin-bottom:12px">'+
         '<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink4);margin-bottom:3px;font-family:var(--mono)">Room '+(i+1)+' · ⬆ '+room.votes+' votes</div>'+
         '<h3>'+esc(room.title)+'</h3>'+
-        '<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">'+parts+'</div>'+
-        (data.scribe?'<div style="font-size:12px;color:var(--rust);margin-top:4px">✏️ Scribe: '+esc(data.scribe)+'</div>':'')+
+        '<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">'+partsHtml+'</div>'+
       '</div>'+
-      (data.rootCause?
-        '<div style="margin-bottom:12px">'+
-          '<label class="lbl">Root Cause</label>'+
-          '<div style="padding:10px 13px;background:var(--sage-l);border-radius:7px;font-size:13px;color:var(--ink2);border-left:3px solid var(--sage)">'+esc(data.rootCause)+'</div>'+
-        '</div>':
-        '<div style="margin-bottom:12px;font-size:13px;color:var(--ink4)">⚠ No root cause entered.</div>')+
-      '<label class="lbl">Action Items</label>'+
-      '<div style="display:flex;flex-direction:column;gap:5px">'+actHtml+'</div>'+
-    '</div>';
+      (data.rootCause
+        ?'<div style="margin-bottom:12px"><label class="lbl">Root Cause</label>'+
+          '<div style="padding:10px 13px;background:var(--sage-l);border-radius:7px;font-size:13px;color:var(--ink2);border-left:3px solid var(--sage)">'+esc(data.rootCause)+'</div></div>'
+        :'<div style="margin-bottom:12px;font-size:13px;color:var(--ink4)">⚠ No root cause entered.</div>')+
+      '<label class="lbl">Action Items</label><div style="display:flex;flex-direction:column;gap:5px">'+actHtml+'</div></div>';
   }).join('');
-
   setArea(
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;gap:14px;flex-wrap:wrap">'+
-      '<div>'+
-        '<h2>Session Report</h2>'+
-        '<p style="color:var(--ink3);margin-top:5px">'+esc(s.title)+' — '+new Date(s.createdAt).toLocaleDateString('en-GB')+'</p>'+
-      '</div>'+
-      '<button id="btn-pdf" class="btn btn-ink">⬇ Download PDF Report</button>'+
-    '</div>'+
+      '<div><h2>Session Report</h2><p style="color:var(--ink3);margin-top:5px">'+esc(s.title)+' — '+new Date(s.createdAt).toLocaleDateString('en-GB')+'</p></div>'+
+      '<button id="btn-pdf" class="btn btn-ink">⬇ Download PDF Report</button></div>'+
     '<div class="g3" style="margin-bottom:22px">'+statsHtml+'</div>'+
     '<div class="card" style="margin-bottom:22px"><h3 style="margin-bottom:14px">All Cards (sorted by votes)</h3>'+
-      '<div style="display:flex;flex-direction:column;gap:5px">'+cardsHtml+'</div>'+
-    '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:5px">'+cardsHtml+'</div></div>'+
     roomsHtml
   );
-
   document.getElementById('btn-pdf').addEventListener('click',downloadPDF);
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    PDF
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 function downloadPDF(){
   var jsPDF=window.jspdf&&window.jspdf.jsPDF;
-  if(!jsPDF){toast('PDF library not loaded — wait a moment and try again');return;}
+  if(!jsPDF){toast('PDF library not loaded yet — try again in a moment');return;}
   var doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  var s=sess; var pw=190,ml=10,y=15;
+  var s=sess;var pw=190,ml=10,y=15;
   function np(){doc.addPage();y=15;}
   function cy(n){if(y+n>278)np();}
-
   /* Cover */
   doc.setFillColor(26,23,20);doc.rect(0,0,210,297,'F');
   doc.setTextColor(245,240,232);doc.setFontSize(9);doc.setFont('helvetica','normal');
@@ -987,37 +1093,25 @@ function downloadPDF(){
   doc.text(new Date(s.createdAt).toLocaleDateString('en-GB'),105,132+tl.length*3,{align:'center'});
   var totalAct2=s.rooms.reduce(function(t,r){var d=s.roomData&&s.roomData[r.id];return t+(d&&d.actions?d.actions.length:0);},0);
   var sv=[['Participants',s.participants.length],['Cards',s.cards.length],
-          ['Votes',s.cards.reduce(function(t,c){return t+(c.votes||0);},0)],
-          ['Rooms',s.rooms.length],['Actions',totalAct2]];
-  sv.forEach(function(v,i){
-    var x=ml+i*37;
+    ['Votes',s.cards.reduce(function(t,c){return t+(c.votes||0);},0)],['Rooms',s.rooms.length],['Actions',totalAct2]];
+  sv.forEach(function(v,i){var x=ml+i*37;
     doc.setFillColor(40,37,33);doc.roundedRect(x,163,33,26,3,3,'F');
-    doc.setFontSize(16);doc.setFont('helvetica','bold');doc.setTextColor(245,240,232);
-    doc.text(String(v[1]),x+16.5,176,{align:'center'});
-    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(156,144,136);
-    doc.text(v[0],x+16.5,184,{align:'center'});
+    doc.setFontSize(16);doc.setFont('helvetica','bold');doc.setTextColor(245,240,232);doc.text(String(v[1]),x+16.5,176,{align:'center'});
+    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(156,144,136);doc.text(v[0],x+16.5,184,{align:'center'});
   });
-  doc.setFontSize(8);doc.setTextColor(70,63,58);
-  doc.text('hakanadiguzel.com · Lean Café Retrospective',105,286,{align:'center'});
-
+  doc.setFontSize(8);doc.setTextColor(70,63,58);doc.text('hakanadiguzel.com · Lean Café Retrospective',105,286,{align:'center'});
   /* Cards page */
   doc.addPage();y=20;
-  doc.setFontSize(15);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);
-  doc.text('All Cards',ml,y);y+=10;
-  var sc=s.cards.slice().sort(function(a,b){return (b.votes||0)-(a.votes||0);});
-  sc.forEach(function(card,i){
-    cy(13);
-    var top=i<s.rooms.length;
-    doc.setFillColor(top?240:245,top?220:240,top?213:232);
-    doc.roundedRect(ml,y,pw,11,2,2,'F');
+  doc.setFontSize(15);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);doc.text('All Cards',ml,y);y+=10;
+  s.cards.slice().sort(function(a,b){return (b.votes||0)-(a.votes||0);}).forEach(function(card,i){
+    cy(13);var top=i<s.rooms.length;
+    doc.setFillColor(top?240:245,top?220:240,top?213:232);doc.roundedRect(ml,y,pw,11,2,2,'F');
     if(top){doc.setFillColor(196,82,42);doc.rect(ml,y,2.5,11,'F');}
     doc.setFontSize(9);doc.setFont('helvetica',top?'bold':'normal');doc.setTextColor(26,23,20);
     var cl=doc.splitTextToSize(card.text,pw-40);doc.text(cl[0],ml+5,y+7);
     doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(100,93,88);
-    doc.text('↑'+String(card.votes||0),ml+pw-3,y+7,{align:'right'});
-    y+=13;
+    doc.text('↑'+String(card.votes||0),ml+pw-3,y+7,{align:'right'});y+=13;
   });
-
   /* Room pages */
   s.rooms.forEach(function(room,i){
     doc.addPage();y=20;
@@ -1027,124 +1121,88 @@ function downloadPDF(){
     doc.setFontSize(13);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);
     var rl=doc.splitTextToSize(room.title,pw);doc.text(rl,ml,y);y+=rl.length*7+4;
     var data=(s.roomData&&s.roomData[room.id])||{rootCause:'',actions:[]};
-    if((room.participants||[]).length){
-      doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(100,93,88);
-      doc.text('Participants: '+(room.participants||[]).join(', '),ml,y);y+=6;
-    }
-    if(data.scribe){
-      doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(196,82,42);
-      doc.text('Scribe: '+data.scribe,ml,y);y+=7;
-    }
+    var partNames=(room.participants||[]).map(function(uid){var p=s.participants.find(function(x){return x.uid===uid;});return p?p.name:uid;});
+    if(partNames.length){doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(100,93,88);doc.text('Participants: '+partNames.join(', '),ml,y);y+=6;}
     if(data.rootCause&&data.rootCause.trim()){
       cy(18);y+=3;
       var rcl=doc.splitTextToSize(data.rootCause,pw-12);
       doc.setFillColor(216,234,223);doc.roundedRect(ml,y,pw,rcl.length*5+13,3,3,'F');
       doc.setFillColor(74,124,89);doc.rect(ml,y,2.5,rcl.length*5+13,'F');
-      doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(74,124,89);
-      doc.text('ROOT CAUSE',ml+5,y+6);
-      doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(26,23,20);
-      doc.text(rcl,ml+5,y+12);y+=rcl.length*5+17;
+      doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(74,124,89);doc.text('ROOT CAUSE',ml+5,y+6);
+      doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(26,23,20);doc.text(rcl,ml+5,y+12);y+=rcl.length*5+17;
     }
     if((data.actions||[]).length){
-      cy(10);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);
-      doc.text('Action Items',ml,y);y+=8;
+      cy(10);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);doc.text('Action Items',ml,y);y+=8;
       (data.actions||[]).forEach(function(a,j){
         if(!a.text)return;cy(16);
-        var al=doc.splitTextToSize(a.text,pw-70);
-        var rh=Math.max(14,al.length*5+10);
+        var al=doc.splitTextToSize(a.text,pw-70);var rh=Math.max(14,al.length*5+10);
         doc.setFillColor(240,221,213);doc.roundedRect(ml,y,pw,rh,2,2,'F');
-        doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(196,82,42);
-        doc.text(String(j+1),ml+5,y+rh/2,{baseline:'middle'});
-        doc.setFont('helvetica','normal');doc.setTextColor(26,23,20);
-        doc.text(al,ml+11,y+7);
-        var rightX=ml+pw-3;
-        if(a.dueDate){
-          doc.setFontSize(8);doc.setTextColor(100,93,88);
-          doc.text(a.dueDate,rightX,y+rh-4,{align:'right'});
-        }
-        if(a.assignee){
-          doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(196,154,60);
-          doc.text('@'+a.assignee,rightX,y+7,{align:'right'});
-        }
+        doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(196,82,42);doc.text(String(j+1),ml+5,y+rh/2,{baseline:'middle'});
+        doc.setFont('helvetica','normal');doc.setTextColor(26,23,20);doc.text(al,ml+11,y+7);
+        if(a.dueDate){doc.setFontSize(8);doc.setTextColor(100,93,88);doc.text(a.dueDate,ml+pw-3,y+rh-4,{align:'right'});}
+        if(a.assignee){doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(196,154,60);doc.text('@'+a.assignee,ml+pw-3,y+7,{align:'right'});}
         y+=rh+5;
       });
     }
   });
-
   doc.save('lean-cafe-'+s.id+'-'+new Date().toISOString().split('T')[0]+'.pdf');
   toast('PDF downloaded ✓');
 }
 
-/* ════════════════════════════════════════════
+/* ════════════════════════════════════════
    BOOT
-════════════════════════════════════════════ */
+════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded',function(){
-
   /* char counters */
-  function setupCounter(inputId,countId){
-    var inp=document.getElementById(inputId);
-    var cnt=document.getElementById(countId);
-    inp.addEventListener('input',function(){
+  function cc(inp,cnt){
+    document.getElementById(inp).addEventListener('input',function(){
       var n=this.value.length;
-      cnt.textContent=n+' / 15';
-      cnt.classList.toggle('warn',n>=13);
+      document.getElementById(cnt).textContent=n+' / 15';
+      document.getElementById(cnt).classList.toggle('warn',n>=13);
     });
   }
-  setupCounter('f-admin','f-admin-count');
-  setupCounter('j-name','j-name-count');
+  cc('f-admin','f-admin-count');
+  cc('j-name','j-name-count');
 
-  /* home */
   document.getElementById('go-setup').addEventListener('click',function(){show('s-setup');});
   document.getElementById('go-join').addEventListener('click',function(){
     var code=new URLSearchParams(location.search).get('session')||'';
     if(code)document.getElementById('j-code').value=code;
     show('s-join');
   });
-
-  /* setup */
   document.getElementById('setup-back').addEventListener('click',function(){show('s-home');});
   document.getElementById('btn-create').addEventListener('click',createSession);
-
-  /* join */
   document.getElementById('join-back').addEventListener('click',function(){show('s-home');});
   document.getElementById('btn-join').addEventListener('click',joinSession);
   document.getElementById('j-code').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('j-name').focus();});
   document.getElementById('j-name').addEventListener('keydown',function(e){if(e.key==='Enter')joinSession();});
-
-  /* link share */
   document.getElementById('btn-copy').addEventListener('click',function(){
     var url=document.getElementById('lnk-url').textContent;
-    navigator.clipboard.writeText(url).then(function(){toast('Link copied to clipboard!');}).catch(function(){toast('Copy this link: '+url);});
+    navigator.clipboard.writeText(url).then(function(){toast('Link copied!');}).catch(function(){toast('Copy: '+url);});
   });
   document.getElementById('btn-go-admin').addEventListener('click',function(){if(sess)enterSession();});
-
-  /* modal */
   document.getElementById('m-close').addEventListener('click',closeRoomModal);
   document.getElementById('m-cancel').addEventListener('click',closeRoomModal);
   document.getElementById('m-save').addEventListener('click',function(){
     if(!activeRoom)return;
     var s=fresh();
     if(!s.roomData)s.roomData={};
-    if(!s.roomData[activeRoom])s.roomData[activeRoom]={rootCause:'',actions:[],scribe:''};
+    if(!s.roomData[activeRoom])s.roomData[activeRoom]={rootCause:'',actions:[]};
     s.roomData[activeRoom].rootCause=document.getElementById('m-root').value;
-    s.roomData[activeRoom].scribe=document.getElementById('m-scribe').value;
-    persist(s); closeRoomModal(); renderPhase(); toast('Saved ✓');
+    persist(s);closeRoomModal();renderPhase();toast('Saved ✓');
   });
   document.getElementById('m-add-action').addEventListener('click',function(){
     if(!activeRoom)return;
     var s=fresh();
     if(!s.roomData)s.roomData={};
-    if(!s.roomData[activeRoom])s.roomData[activeRoom]={rootCause:'',actions:[],scribe:''};
+    if(!s.roomData[activeRoom])s.roomData[activeRoom]={rootCause:'',actions:[]};
     s.roomData[activeRoom].actions.push({text:'',assignee:'',dueDate:''});
-    persist(s); renderModalActions(s.roomData[activeRoom].actions);
+    persist(s);renderModalActions(s.roomData[activeRoom].actions);
   });
 
   /* auto-join from URL */
   var urlCode=new URLSearchParams(location.search).get('session')||'';
-  if(urlCode){
-    var s=load(urlCode);
-    if(s){document.getElementById('j-code').value=urlCode;show('s-join');}
-  }
+  if(urlCode){var s=load(urlCode);if(s){document.getElementById('j-code').value=urlCode;show('s-join');}}
 });
 
 })();
