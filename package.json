@@ -1,0 +1,12 @@
+{
+  "name": "lean-cafe-retro",
+  "version": "1.0.0",
+  "description": "Lean Café Retrospective tool for large groups",
+  "scripts": {
+    "start": "npx serve public",
+    "dev": "npx serve public"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}
