@@ -208,11 +208,12 @@ function renderAdminSessions(list) {
     <div class="admin-sess-card" data-id="${s.id}">
       <div class="admin-sess-info">
         <div class="admin-sess-title">${esc(s.title)}</div>
-        <div class="admin-sess-meta">${s.teamId ? '🏷 '+esc(s.teamId) : 'No team'} &nbsp;·&nbsp; ${new Date(s.createdAt).toLocaleDateString('en-GB')}</div>
+        <div class="admin-sess-meta">${s.teamId ? '🏷 '+esc(s.teamId) : ''} ${new Date(s.createdAt).toLocaleDateString('en-GB')}</div>
         <div class="admin-sess-code">${s.id}</div>
       </div>
       <div class="admin-sess-actions">
         <button class="btn btn-sm btn-ink open-sess" data-id="${s.id}">Open</button>
+        <button class="btn btn-sm btn-ghost copy-sess-link" data-id="${s.id}">Copy Link</button>
         <button class="btn btn-sm btn-ghost del-sess" data-id="${s.id}">Delete</button>
       </div>
     </div>`).join('');
@@ -223,6 +224,14 @@ function renderAdminSessions(list) {
     if (!s) { toast('Session not found'); return; }
     me = { name: s.adminName, uid: fbUser.uid, isAdmin: true };
     enterSession(id);
+  }));
+
+  el.querySelectorAll('.copy-sess-link').forEach(btn => btn.addEventListener('click', () => {
+    const id  = btn.getAttribute('data-id');
+    const url = location.origin + location.pathname + '?session=' + id;
+    navigator.clipboard.writeText(url)
+      .then(() => { btn.textContent = '✓ Copied!'; setTimeout(() => btn.textContent = 'Copy Link', 2000); })
+      .catch(() => toast('Copy manually: ' + url));
   }));
 
   el.querySelectorAll('.del-sess').forEach(btn => btn.addEventListener('click', async () => {
@@ -329,6 +338,24 @@ function enterSession(id) {
   });
   document.getElementById('ses-title').textContent = sess?.title || id;
   document.getElementById('ses-user').textContent  = me.name + (me.isAdmin ? ' ★' : '');
+
+  // Show join link banner for admin at top of session
+  const linkBanner = document.getElementById('ses-link-banner');
+  const linkBannerUrl = document.getElementById('ses-link-banner-url');
+  const linkBannerCopy = document.getElementById('ses-link-banner-copy');
+  if (me.isAdmin && linkBanner) {
+    const url = location.origin + location.pathname + '?session=' + id;
+    linkBannerUrl.textContent = url;
+    linkBanner.style.display = 'flex';
+    linkBannerCopy.onclick = () => {
+      navigator.clipboard.writeText(url)
+        .then(() => { linkBannerCopy.textContent = '✓ Copied!'; setTimeout(() => linkBannerCopy.textContent = 'Copy', 2000); })
+        .catch(() => toast('Copy: ' + url));
+    };
+  } else if (linkBanner) {
+    linkBanner.style.display = 'none';
+  }
+
   show('s-session');
   _lastPhase = sess?.phase || 1;
   renderPhase();
@@ -1580,6 +1607,13 @@ hr{border:none;border-top:1px solid var(--bdr);margin:28px 0}
       <span id="ses-user" style="font-size:13px;color:var(--g3);font-weight:600"></span>
       <div class="pbadge"><span class="pdot"></span><span id="ses-phase-label">Phase 1</span></div>
     </div>
+  </div>
+
+  <!-- Join link banner — admin only, shown at top of session -->
+  <div id="ses-link-banner" style="display:none;align-items:center;gap:10px;padding:10px 24px;background:var(--sky-l);border-bottom:1px solid rgba(58,107,138,.2);flex-wrap:wrap">
+    <span style="font-size:12px;font-weight:700;color:var(--sky);white-space:nowrap">🔗 Join link:</span>
+    <span id="ses-link-banner-url" style="font-family:var(--mono);font-size:12px;color:var(--sky);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0"></span>
+    <button id="ses-link-banner-copy" class="btn btn-sm" style="background:var(--sky);color:white;flex-shrink:0">Copy</button>
   </div>
   <div class="step-bar">
     <div class="step" id="step-1"><div class="step-c">1</div><span>Write</span></div>
