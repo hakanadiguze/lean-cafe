@@ -316,14 +316,152 @@ function enterSession(id) {
     if (!snap.exists()) return;
     sess = snap.val();
     document.getElementById('ses-title').textContent = sess.title;
-    if (sess.phase !== _lastPhase) { _lastPhase = sess.phase; renderPhase(); }
-    else { updateTimerOnly(sess.phase, sess); }
+    if (sess.phase !== _lastPhase) {
+      // Phase changed → full re-render (safe, no inputs in progress)
+      _lastPhase = sess.phase;
+      renderPhase();
+    } else {
+      // Same phase → only update the parts that change without destroying inputs
+      updateTimerOnly(sess.phase, sess);
+      refreshCardsInPlace();
+      refreshDiscussRoomsInPlace();
+    }
   });
   document.getElementById('ses-title').textContent = sess?.title || id;
   document.getElementById('ses-user').textContent  = me.name + (me.isAdmin ? ' ★' : '');
   show('s-session');
   _lastPhase = sess?.phase || 1;
   renderPhase();
+}
+
+/* Refresh only the post-it grid without touching the textarea/input */
+function refreshCardsInPlace() {
+  const grid = document.getElementById('cards-grid');
+  if (!grid) return;
+  const phase = sess.phase;
+  const part  = sess.participants?.[me.uid] || { votesUsed: 0 };
+  const used  = part.votesUsed || 0;
+  const left  = sess.votesPerPerson - used;
+  const cards = arr(sess.cards).sort((a,b) =>
+    phase === 2 ? (b.votes||0)-(a.votes||0) : (a.createdAt||0)-(b.createdAt||0));
+
+  if (!cards.length) {
+    grid.innerHTML = `<div class="empty-state">${phase===2 ? 'No notes to vote on yet.' : 'No notes yet — write the first one!'}</div>`;
+    return;
+  }
+
+  // Update existing post-its in place; add new ones; remove deleted ones
+  const existingIds = new Set([...grid.querySelectorAll('.postit')].map(el => el.getAttribute('data-cid')));
+  const newIds      = new Set(cards.map(c => c.id));
+
+  // Remove deleted
+  grid.querySelectorAll('.postit').forEach(el => {
+    if (!newIds.has(el.getAttribute('data-cid'))) el.remove();
+  });
+
+  // Add or update
+  cards.forEach((c, idx) => {
+    const existing = grid.querySelector(`.postit[data-cid="${c.id}"]`);
+    const voted    = !!(c.voters?.[me.uid]);
+    const html     = postItCard({ ...c, showVote: phase===2, voted, canVote: left>0 });
+    if (!existing) {
+      // Insert in correct position
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const newEl = tmp.firstElementChild;
+      const allPostits = [...grid.querySelectorAll('.postit')];
+      if (idx >= allPostits.length) grid.appendChild(newEl);
+      else grid.insertBefore(newEl, allPostits[idx]);
+    } else {
+      // Update vote count and button state only (preserve rest)
+      const vcountEl = existing.querySelector('.postit-vcount');
+      const vbtnEl   = existing.querySelector('.postit-vote');
+      if (vcountEl) vcountEl.textContent = c.votes > 0 ? '+'+c.votes : '+0';
+      if (vbtnEl) {
+        vbtnEl.className = 'postit-vote' + (voted ? ' voted' : '');
+        vbtnEl.disabled  = !voted && left <= 0;
+        vbtnEl.textContent = (voted ? '✓ ' : '+ ') + (c.votes > 0 ? c.votes : '');
+      }
+    }
+  });
+
+  // Re-bind vote buttons after DOM changes
+  if (phase === 2) bindVoteButtons();
+  // Re-bind delete buttons
+  grid.querySelectorAll('.postit-del').forEach(btn => {
+    btn.replaceWith(btn.cloneNode(true)); // remove old listeners
+  });
+  grid.querySelectorAll('.postit-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cid = btn.getAttribute('data-cid');
+      await update(ref(db, `${SP(sess.id)}/cards`), { [cid]: null });
+    });
+  });
+
+  // Also update vote-status bar (tokens + counter)
+  if (phase === 2) {
+    document.querySelectorAll('.vtoken').forEach((tok, i) => {
+      tok.classList.toggle('used', i < used);
+    });
+    const leftEl = document.querySelector('.vote-count-label span');
+    if (leftEl) {
+      leftEl.textContent = left;
+      leftEl.style.color = left === 0 ? 'var(--g4)' : 'var(--rust)';
+    }
+  }
+}
+
+/* Refresh discuss room cards without re-rendering modal or clearing inputs */
+function refreshDiscussRoomsInPlace() {
+  if (sess.phase !== 3) return;
+  const rooms = arr(sess.rooms).sort((a,b) => (b.votes||0)-(a.votes||0));
+  rooms.forEach((room, i) => {
+    const data    = sess.roomData?.[room.id] || {};
+    const acts    = arr(data.actions);
+    const hasRoot = !!(data.rootCause?.trim());
+
+    // Update status badges
+    const roomEl  = document.querySelector(`.discuss-room[data-rid="${room.id}"]`);
+    if (!roomEl) return;
+
+    // Update root cause badge
+    const headerActions = roomEl.querySelector('.discuss-room-header > div:last-child');
+    if (headerActions) {
+      const rootBadge = headerActions.querySelector('.tag:first-child');
+      if (rootBadge) {
+        rootBadge.className  = hasRoot ? 'tag t-sage' : 'tag t-gray';
+        rootBadge.textContent = hasRoot ? '✓ Root cause' : 'No root cause';
+      }
+      // Action count badge
+      let actBadge = headerActions.querySelector('.tag.t-rust');
+      if (acts.length > 0) {
+        if (!actBadge) {
+          actBadge = document.createElement('span');
+          headerActions.insertBefore(actBadge, headerActions.querySelector('button'));
+        }
+        actBadge.className   = 'tag t-rust';
+        actBadge.textContent = `${acts.length} action${acts.length>1?'s':''}`;
+      } else if (actBadge) {
+        actBadge.remove();
+      }
+    }
+
+    // Update root cause preview
+    let preview = roomEl.querySelector('.discuss-root-preview');
+    if (hasRoot) {
+      const previewText = (data.rootCause||'').slice(0,140) + (data.rootCause.length>140?'…':'');
+      if (preview) {
+        preview.textContent = previewText;
+      } else {
+        preview = document.createElement('div');
+        preview.className   = 'discuss-root-preview';
+        preview.textContent = previewText;
+        roomEl.querySelector('.discuss-room-header').after(preview);
+      }
+    } else if (preview) {
+      preview.remove();
+    }
+  });
 }
 
 /* ─────────────────────────────────────────────
@@ -622,48 +760,74 @@ function closeDiscussModal() {
 
 function renderDiscussActions(actions) {
   const el = document.getElementById('dm-actions');
+  if (!el) return;
   if (!actions.length) {
     el.innerHTML = '<div style="color:var(--g4);font-size:13px;padding:6px 0">No actions yet. Click "+ Add Action" above.</div>';
     return;
   }
   el.innerHTML = actions.map((a,i) => {
     const miss = !a.assignee?.trim() || !a.dueDate?.trim();
-    return `<div class="action-form-card" style="border-color:${miss?'rgba(196,154,60,.4)':'var(--bdr)'}">
+    return `<div class="action-form-card" data-action-i="${i}" style="border-color:${miss?'rgba(196,154,60,.4)':'var(--bdr)'}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span class="lbl">Action ${i+1}</span>
         <button class="btn btn-ghost btn-sm rm-act" data-i="${i}">Remove</button>
       </div>
       <div class="fld"><label class="lbl">What needs to be done?</label>
-        <input class="inp" value="${esc(a.text||'')}" placeholder="e.g. Set up a weekly demo calendar" data-i="${i}" data-f="text"></div>
+        <input class="inp act-inp" value="${esc(a.text||'')}" placeholder="e.g. Set up a weekly demo calendar" data-i="${i}" data-f="text"></div>
       <div class="g2" style="gap:10px">
         <div><label class="lbl">Assignee <span style="color:var(--gold)">(max 20 chars — confirm first!)</span></label>
-          <input class="inp" value="${esc(a.assignee||'')}" placeholder="Person's name" maxlength="20" data-i="${i}" data-f="assignee"></div>
-        <div><label class="lbl">Due Date <span style="color:var(--ink3)">(agree with assignee)</span></label>
-          <input class="inp" type="date" value="${esc(a.dueDate||'')}" data-i="${i}" data-f="dueDate"></div>
+          <input class="inp act-inp" value="${esc(a.assignee||'')}" placeholder="Person's name" maxlength="20" data-i="${i}" data-f="assignee"></div>
+        <div><label class="lbl">Due Date <span style="color:var(--g3)">(agree with assignee)</span></label>
+          <input class="inp act-inp" type="date" value="${esc(a.dueDate||'')}" data-i="${i}" data-f="dueDate"></div>
       </div>
-      ${miss ? `<div style="font-size:12px;color:var(--gold);margin-top:4px">⚠ ${[!a.assignee?.trim()?'No assignee':null,!a.dueDate?.trim()?'No due date':null].filter(Boolean).join(' · ')}</div>` : ''}
+      <div class="action-warn" style="font-size:12px;color:var(--gold);margin-top:4px;${miss?'':'display:none'}">
+        ⚠ ${[!a.assignee?.trim()?'No assignee':null,!a.dueDate?.trim()?'No due date':null].filter(Boolean).join(' · ')}
+      </div>
     </div>`;
   }).join('');
 
-  el.querySelectorAll('input[data-f]').forEach(inp => {
-    ['input','change'].forEach(ev => inp.addEventListener(ev, () => {
-      const i = parseInt(inp.getAttribute('data-i'));
-      const f = inp.getAttribute('data-f');
+  el.querySelectorAll('.act-inp').forEach(inp => {
+    // Update local state only — NO DOM rebuild — cursor stays in place
+    inp.addEventListener('input', () => {
+      const i   = parseInt(inp.getAttribute('data-i'));
+      const f   = inp.getAttribute('data-f');
       if (!sess.roomData) sess.roomData = {};
       if (!sess.roomData[activeRid]) sess.roomData[activeRid] = { rootCause:'', actions:{} };
       const acts = arr(sess.roomData[activeRid].actions);
-      if (acts[i]) { acts[i][f] = inp.value; if (f==='assignee'||f==='dueDate') renderDiscussActions(acts); }
-    }));
+      if (acts[i]) acts[i][f] = inp.value;
+
+      // Update only the warning label of this card (no re-render)
+      const card     = el.querySelector(`.action-form-card[data-action-i="${i}"]`);
+      const warnEl   = card?.querySelector('.action-warn');
+      const assignee = acts[i]?.assignee?.trim();
+      const dueDate  = acts[i]?.dueDate?.trim();
+      const miss     = !assignee || !dueDate;
+      if (warnEl) {
+        warnEl.textContent  = '⚠ ' + [!assignee?'No assignee':null,!dueDate?'No due date':null].filter(Boolean).join(' · ');
+        warnEl.style.display = miss ? '' : 'none';
+      }
+      if (card) card.style.borderColor = miss ? 'rgba(196,154,60,.4)' : 'var(--bdr)';
+    });
+
+    // Persist to Firebase when user leaves the field
+    inp.addEventListener('blur', async () => {
+      if (!activeRid) return;
+      const acts = arr(sess.roomData?.[activeRid]?.actions || {});
+      const obj  = {}; acts.forEach((a,j) => { obj[`act${j}`] = a; });
+      await update(ref(db, `${SP(sess.id)}/roomData/${activeRid}`), { actions: obj });
+    });
   });
 
-  el.querySelectorAll('.rm-act').forEach(btn => btn.addEventListener('click', async () => {
-    const i    = parseInt(btn.getAttribute('data-i'));
-    const acts = arr(sess.roomData?.[activeRid]?.actions || {});
-    acts.splice(i,1);
-    const obj = {}; acts.forEach((a,j) => obj[`act${j}`]=a);
-    await update(ref(db, `${SP(sess.id)}/roomData/${activeRid}`), { actions: obj });
-    renderDiscussActions(acts);
-  }));
+  el.querySelectorAll('.rm-act').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i    = parseInt(btn.getAttribute('data-i'));
+      const acts = arr(sess.roomData?.[activeRid]?.actions || {});
+      acts.splice(i,1);
+      const obj = {}; acts.forEach((a,j) => obj[`act${j}`]=a);
+      await update(ref(db, `${SP(sess.id)}/roomData/${activeRid}`), { actions: obj });
+      renderDiscussActions(acts);
+    });
+  });
 }
 
 /* ─────────────────────────────────────────────
@@ -1003,9 +1167,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function doSaveRoom(rootCause) {
-  const acts=arr(sess.roomData?.[activeRid]?.actions||{});
-  const obj={}; acts.forEach((a,j)=>obj[`act${j}`]=a);
-  await update(ref(db,`${SP(sess.id)}/roomData/${activeRid}`),{rootCause,actions:obj});
+  // Collect current values from DOM inputs (since we no longer push to Firebase on every keystroke)
+  const el = document.getElementById('dm-actions');
+  if (el) {
+    el.querySelectorAll('.act-inp').forEach(inp => {
+      const i = parseInt(inp.getAttribute('data-i'));
+      const f = inp.getAttribute('data-f');
+      if (!sess.roomData) sess.roomData = {};
+      if (!sess.roomData[activeRid]) sess.roomData[activeRid] = { rootCause:'', actions:{} };
+      const acts = arr(sess.roomData[activeRid].actions);
+      if (acts[i]) acts[i][f] = inp.value;
+    });
+  }
+  const acts = arr(sess.roomData?.[activeRid]?.actions || {});
+  const obj  = {}; acts.forEach((a,j) => obj[`act${j}`] = a);
+  await update(ref(db, `${SP(sess.id)}/roomData/${activeRid}`), { rootCause, actions: obj });
   closeDiscussModal();
   toast('Saved ✓');
 }
