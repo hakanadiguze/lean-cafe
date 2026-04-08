@@ -1,36 +1,23 @@
 {
   "rules": {
-    "lean-cafe": {
+    "lc": {
       "sessions": {
         "$sessionId": {
-          // Anyone with the session ID can read (participants join via link)
           ".read": true,
-
-          // Only authenticated users (facilitators) can create sessions
           ".write": "auth != null || data.exists()",
-
-          "phase":         { ".write": "auth != null && auth.uid === data.parent().child('adminUid').val()" },
-          "timers":        { ".write": "auth != null && auth.uid === data.parent().child('adminUid').val()" },
-          "rooms":         { ".write": "auth != null && auth.uid === data.parent().child('adminUid').val()" },
-
-          "cards": {
-            "$cardId": {
-              // Anyone can add cards; only card owner or admin can delete
-              ".write": true
-            }
-          },
-
-          "participants": {
-            "$uid": {
-              // Anyone can register themselves as a participant
-              ".write": true
-            }
-          },
-
-          "roomData": {
-            // Anyone in the session can write room data (Scribe)
-            ".write": true
-          }
+          "phase":   { ".write": "root.child('lc/sessions/'+$sessionId+'/adminUid').val() === (auth != null ? auth.uid : null) || data.parent().child('isGuestAdmin').val() === true" },
+          "timers":  { ".write": true },
+          "rooms":   { ".write": true },
+          "cards":   { "$cardId": { ".write": true } },
+          "participants": { "$uid": { ".write": true } },
+          "roomData": { ".write": true },
+          "closed":  { ".write": true }
+        }
+      },
+      "admins": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid"
         }
       }
     }
