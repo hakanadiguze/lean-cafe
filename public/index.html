@@ -456,34 +456,14 @@ function refreshDiscussRoomsInPlace() {
   const rooms = arr(sess.rooms).sort((a,b) => (b.votes||0)-(a.votes||0));
   rooms.forEach((room, i) => {
     const data    = sess.roomData?.[room.id] || {};
-    const acts    = arr(data.actions);
     const hasRoot = !!(data.rootCause?.trim());
-
-    // Update status badges
     const roomEl  = document.querySelector(`.discuss-room[data-rid="${room.id}"]`);
     if (!roomEl) return;
 
-    // Update root cause badge
-    const headerActions = roomEl.querySelector('.discuss-room-header > div:last-child');
-    if (headerActions) {
-      const rootBadge = headerActions.querySelector('.tag:first-child');
-      if (rootBadge) {
-        rootBadge.className  = hasRoot ? 'tag t-sage' : 'tag t-gray';
-        rootBadge.textContent = hasRoot ? '✓ Root cause' : 'No root cause';
-      }
-      // Action count badge
-      let actBadge = headerActions.querySelector('.tag.t-rust');
-      if (acts.length > 0) {
-        if (!actBadge) {
-          actBadge = document.createElement('span');
-          headerActions.insertBefore(actBadge, headerActions.querySelector('button'));
-        }
-        actBadge.className   = 'tag t-rust';
-        actBadge.textContent = `${acts.length} action${acts.length>1?'s':''}`;
-      } else if (actBadge) {
-        actBadge.remove();
-      }
-    }
+    // Update status badges using shared helper
+    const { rootBadge, actionBadge } = roomStatusBadges(data);
+    const badgesEl = roomEl.querySelector('.room-badges');
+    if (badgesEl) badgesEl.innerHTML = rootBadge + actionBadge;
 
     // Update root cause preview
     let preview = roomEl.querySelector('.discuss-root-preview');
@@ -494,8 +474,10 @@ function refreshDiscussRoomsInPlace() {
       } else {
         preview = document.createElement('div');
         preview.className   = 'discuss-root-preview';
+        preview.style.marginTop = '10px';
         preview.textContent = previewText;
-        roomEl.querySelector('.discuss-room-header').after(preview);
+        const header = roomEl.querySelector('.discuss-room-header');
+        if (header) header.after(preview);
       }
     } else if (preview) {
       preview.remove();
@@ -739,39 +721,74 @@ function bindVoteButtons() {
 }
 
 /* ─────────────────────────────────────────────
+   ROOM STATUS BADGE HELPER
+   Returns { rootBadgeHtml, actionBadgeHtml }
+───────────────────────────────────────────── */
+function roomStatusBadges(data) {
+  const acts    = arr(data.actions);
+  const hasRoot = !!(data.rootCause?.trim());
+
+  // Root cause badge
+  const rootBadge = hasRoot
+    ? '<span class="status-badge badge-green">✓ Root cause added</span>'
+    : '<span class="status-badge badge-red">✗ No root cause</span>';
+
+  // Action badge — check completeness
+  let actionBadge;
+  if (!acts.length) {
+    actionBadge = '<span class="status-badge badge-red">✗ No actions</span>';
+  } else {
+    const complete   = acts.filter(a => a.text?.trim() && a.assignee?.trim() && a.dueDate?.trim());
+    const incomplete = acts.length - complete.length;
+    if (incomplete === 0) {
+      actionBadge = `<span class="status-badge badge-green">✓ ${acts.length} action${acts.length>1?'s':''} complete</span>`;
+    } else {
+      actionBadge = `<span class="status-badge badge-red">⚠ ${incomplete} action${incomplete>1?'s':''} incomplete</span>`;
+    }
+  }
+
+  return { rootBadge, actionBadge };
+}
+
+/* ─────────────────────────────────────────────
    PHASE 3 — DISCUSS
 ───────────────────────────────────────────── */
 function pDiscuss() {
   const rooms = arr(sess.rooms).sort((a,b) => (b.votes||0)-(a.votes||0));
 
   const roomCards = rooms.map((room,i) => {
-    const data    = sess.roomData?.[room.id] || {};
-    const acts    = arr(data.actions);
-    const hasRoot = data.rootCause?.trim();
-    return `
-      <div class="discuss-room" data-rid="${room.id}" data-idx="${i}">
-        <div class="discuss-room-header">
-          <div>
-            <div class="discuss-room-num">Room ${i+1} &nbsp;·&nbsp; <span class="tag t-rust">⬆ ${room.votes} votes</span></div>
-            <div class="discuss-room-title">${esc(room.title)}</div>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            ${hasRoot ? '<span class="tag t-sage">✓ Root cause</span>' : '<span class="tag t-gray">No root cause</span>'}
-            ${acts.length ? `<span class="tag t-rust">${acts.length} action${acts.length>1?'s':''}</span>` : ''}
-            <button class="btn btn-sm btn-ink open-room" data-rid="${room.id}" data-idx="${i}">Open</button>
+    const data   = sess.roomData?.[room.id] || {};
+    const acts   = arr(data.actions);
+    const hasRoot = !!(data.rootCause?.trim());
+    const { rootBadge, actionBadge } = roomStatusBadges(data);
+
+    const actPreview = acts.slice(0,3).map(a => {
+      const complete = a.text?.trim() && a.assignee?.trim() && a.dueDate?.trim();
+      return `<div class="action-row-preview">
+        <span style="color:var(--rust)">→</span>
+        <span style="flex:1">${esc(a.text||'')}</span>
+        ${a.assignee ? `<span class="tag t-gold">@${esc(a.assignee)}</span>` : '<span style="font-size:11px;color:var(--rust)">⚠ no assignee</span>'}
+        ${a.dueDate  ? `<span class="tag t-gray">${esc(a.dueDate)}</span>` : '<span style="font-size:11px;color:var(--g4)">no date</span>'}
+      </div>`;
+    }).join('');
+
+    return `<div class="discuss-room" data-rid="${room.id}" data-idx="${i}">
+      <div class="discuss-room-header">
+        <div style="flex:1;min-width:0">
+          <div class="discuss-room-num">Room ${i+1} &nbsp;·&nbsp; <span class="tag t-rust">⬆ ${room.votes} votes</span></div>
+          <div class="discuss-room-title">${esc(room.title)}</div>
+          <div class="room-badges" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            ${rootBadge}
+            ${actionBadge}
           </div>
         </div>
-        ${hasRoot ? `<div class="discuss-root-preview">${esc((data.rootCause||'').slice(0,140))}${data.rootCause.length>140?'…':''}</div>` : ''}
-        ${acts.length ? `<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">
-          ${acts.slice(0,3).map(a => `
-            <div class="action-row-preview">
-              <span style="color:var(--rust)">→</span>
-              <span style="flex:1">${esc(a.text||'')}</span>
-              ${a.assignee ? `<span class="tag t-gold">@${esc(a.assignee)}</span>` : '<span style="font-size:11px;color:var(--gold)">⚠ no assignee</span>'}
-              ${a.dueDate  ? `<span class="tag t-gray">${esc(a.dueDate)}</span>` : ''}
-            </div>`).join('')}
-        </div>` : ''}
-      </div>`;
+        <button class="btn btn-sm btn-ink open-room" data-rid="${room.id}" data-idx="${i}" style="flex-shrink:0;align-self:flex-start">
+          ✏️ Enter Room
+        </button>
+      </div>
+      ${hasRoot ? `<div class="discuss-root-preview" style="margin-top:10px">${esc((data.rootCause||'').slice(0,140))}${data.rootCause.length>140?'…':''}</div>` : ''}
+      ${acts.length ? `<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">${actPreview}</div>` : ''}
+    </div>`;
   }).join('');
 
   setArea(`
@@ -780,10 +797,11 @@ function pDiscuss() {
       <div>
         <div class="phase-intro-title">Discuss, find root causes &amp; define actions</div>
         <div class="phase-intro-steps">
-          <div class="pstep">Each room below is a discussion topic from the vote. Open your room to join the discussion.</div>
-          <div class="pstep">Your group discusses the topic — preferably in a Teams breakout room with the same number.</div>
-          <div class="pstep">One person (the <strong>Scribe</strong>) clicks <em>Open</em> and types the <strong>root cause</strong> and <strong>action items</strong> for the group.</div>
-          <div class="pstep">Each action needs: what to do, who is responsible, and by when.</div>
+          <div class="pstep">Each card below is a discussion topic. Click <strong>✏️ Enter Room</strong> to open it.</div>
+          <div class="pstep">Discuss your topic with your group — preferably in a Teams breakout room with the same number.</div>
+          <div class="pstep">One person (the <strong>Scribe</strong>) enters the <strong>root cause</strong> and <strong>action items</strong> on behalf of the group.</div>
+          <div class="pstep">Each action needs all three fields: <strong>description</strong>, <strong>assignee</strong>, and <strong>due date</strong>.</div>
+          <div class="pstep">The status labels on each room show what's still missing — everything should turn green before you finish.</div>
         </div>
       </div>
     </div>
@@ -803,8 +821,10 @@ function pDiscuss() {
     e.stopPropagation();
     openDiscussModal(btn.getAttribute('data-rid'), parseInt(btn.getAttribute('data-idx')));
   }));
-  document.querySelectorAll('.discuss-room').forEach(card => card.addEventListener('click', () => {
-    openDiscussModal(card.getAttribute('data-rid'), parseInt(card.getAttribute('data-idx')));
+  document.querySelectorAll('.discuss-room').forEach(card => card.addEventListener('click', function(e) {
+    // Don't re-trigger if button was clicked
+    if (e.target.closest('.open-room')) return;
+    openDiscussModal(this.getAttribute('data-rid'), parseInt(this.getAttribute('data-idx')));
   }));
 }
 
@@ -1425,11 +1445,15 @@ hr{border:none;border-top:1px solid var(--bdr);margin:28px 0}
 /* ══ DISCUSS ROOMS ══ */
 .discuss-room{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:18px 20px;cursor:pointer;transition:transform .2s,box-shadow .2s}
 .discuss-room:hover{transform:translateY(-2px);box-shadow:var(--sh-lg)}
-.discuss-room-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.discuss-room-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .discuss-room-num{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--g4);margin-bottom:3px;font-family:var(--mono);font-weight:700}
 .discuss-room-title{font-size:17px;font-weight:700;line-height:1.35}
 .discuss-root-preview{font-size:13px;padding:9px 12px;background:var(--sage-l);border-radius:8px;border-left:3px solid var(--sage);color:var(--g2);margin-bottom:6px}
 .action-row-preview{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 8px;background:var(--rust-l);border-radius:6px;flex-wrap:wrap}
+/* Status badges — clear red/green traffic light system */
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;border:1.5px solid}
+.badge-green{background:#d4f1c4;color:#2d6b22;border-color:rgba(45,107,34,.3)}
+.badge-red{background:#fde8e8;color:#c0392b;border-color:rgba(192,57,43,.3)}
 
 /* ══ DISCUSS MODAL ══ */
 .overlay{position:fixed;inset:0;background:rgba(26,23,20,.5);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
