@@ -13,20 +13,20 @@
 import { initializeApp }        from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithPopup, signOut, GoogleAuthProvider, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getDatabase, ref, set, get, update, onValue, off, push, serverTimestamp }
+import { getDatabase, ref, set, get, update, onValue, off, runTransaction }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
 /* ─────────────────────────────────────────────
-   FIREBASE CONFIG  — replace with your project
+   FIREBASE CONFIG
 ───────────────────────────────────────────── */
 const FB = {
-  apiKey: "AIzaSyAjB-GfWHXft2BtphvdY9FpAuubooP6TuQ",
-  authDomain: "lean-cafe.firebaseapp.com",
-  databaseURL: "https://lean-cafe-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "lean-cafe",
-  storageBucket: "lean-cafe.firebasestorage.app",
+  apiKey:            "AIzaSyAjB-GfWHXft2BtphvdY9FpAuubooP6TuQ",
+  authDomain:        "lean-cafe.firebaseapp.com",
+  databaseURL:       "https://lean-cafe-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:         "lean-cafe",
+  storageBucket:     "lean-cafe.firebasestorage.app",
   messagingSenderId: "278743586382",
-  appId: "1:278743586382:web:ceae868adac52977db151f"
+  appId:             "1:278743586382:web:ceae868adac52977db151f"
 };
 
 const app  = initializeApp(FB);
@@ -372,68 +372,80 @@ function refreshCardsInPlace() {
   const cards = arr(sess.cards).sort((a,b) =>
     phase === 2 ? (b.votes||0)-(a.votes||0) : (a.createdAt||0)-(b.createdAt||0));
 
+  // If no cards, show empty state
   if (!cards.length) {
     grid.innerHTML = `<div class="empty-state">${phase===2 ? 'No notes to vote on yet.' : 'No notes yet — write the first one!'}</div>`;
     return;
   }
 
-  // Update existing post-its in place; add new ones; remove deleted ones
-  const existingIds = new Set([...grid.querySelectorAll('.postit')].map(el => el.getAttribute('data-cid')));
-  const newIds      = new Set(cards.map(c => c.id));
+  // If currently showing empty state, replace with full grid (first card added)
+  if (grid.querySelector('.empty-state')) {
+    grid.innerHTML = cards.map((c, i) => postItCard({
+      ...c,
+      showVote: phase === 2,
+      voted:    !!(c.voters?.[me.uid]),
+      canVote:  left > 0
+    })).join('');
+    if (phase === 2) bindVoteButtons();
+    grid.querySelectorAll('.postit-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await update(ref(db, `${SP(sess.id)}/cards`), { [btn.getAttribute('data-cid')]: null });
+      });
+    });
+    return;
+  }
+
+  // Normal case: update existing post-its in place; add new ones; remove deleted ones
+  const newIds = new Set(cards.map(c => c.id));
 
   // Remove deleted
   grid.querySelectorAll('.postit').forEach(el => {
     if (!newIds.has(el.getAttribute('data-cid'))) el.remove();
   });
 
-  // Add or update
+  // Add or update each card
   cards.forEach((c, idx) => {
     const existing = grid.querySelector(`.postit[data-cid="${c.id}"]`);
     const voted    = !!(c.voters?.[me.uid]);
-    const html     = postItCard({ ...c, showVote: phase===2, voted, canVote: left>0 });
+
     if (!existing) {
-      // Insert in correct position
+      // New card — insert in correct sort position
       const tmp = document.createElement('div');
-      tmp.innerHTML = html;
+      tmp.innerHTML = postItCard({ ...c, showVote: phase===2, voted, canVote: left>0 });
       const newEl = tmp.firstElementChild;
       const allPostits = [...grid.querySelectorAll('.postit')];
       if (idx >= allPostits.length) grid.appendChild(newEl);
       else grid.insertBefore(newEl, allPostits[idx]);
-    } else {
-      // Update vote count and button state only (preserve rest)
-      const vcountEl = existing.querySelector('.postit-vcount');
-      const vbtnEl   = existing.querySelector('.postit-vote');
-      if (vcountEl) vcountEl.textContent = c.votes > 0 ? '+'+c.votes : '+0';
+    } else if (phase === 2) {
+      // Update vote count and button only — don't touch text/author
+      const vbtnEl = existing.querySelector('.postit-vote');
       if (vbtnEl) {
-        vbtnEl.className = 'postit-vote' + (voted ? ' voted' : '');
-        vbtnEl.disabled  = !voted && left <= 0;
+        vbtnEl.className   = 'postit-vote' + (voted ? ' voted' : '');
+        vbtnEl.disabled    = !voted && left <= 0;
         vbtnEl.textContent = (voted ? '✓ ' : '+ ') + (c.votes > 0 ? c.votes : '');
       }
     }
   });
 
-  // Re-bind vote buttons after DOM changes
+  // Re-bind vote buttons and delete buttons on any DOM change
   if (phase === 2) bindVoteButtons();
-  // Re-bind delete buttons
   grid.querySelectorAll('.postit-del').forEach(btn => {
-    btn.replaceWith(btn.cloneNode(true)); // remove old listeners
-  });
-  grid.querySelectorAll('.postit-del').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const cid = btn.getAttribute('data-cid');
-      await update(ref(db, `${SP(sess.id)}/cards`), { [cid]: null });
+    const newBtn = btn.cloneNode(true);
+    btn.replaceWith(newBtn);
+    newBtn.addEventListener('click', async () => {
+      await update(ref(db, `${SP(sess.id)}/cards`), { [newBtn.getAttribute('data-cid')]: null });
     });
   });
 
-  // Also update vote-status bar (tokens + counter)
+  // Update vote-status bar
   if (phase === 2) {
     document.querySelectorAll('.vtoken').forEach((tok, i) => {
       tok.classList.toggle('used', i < used);
     });
-    const leftEl = document.querySelector('.vote-count-label span');
-    if (leftEl) {
-      leftEl.textContent = left;
-      leftEl.style.color = left === 0 ? 'var(--g4)' : 'var(--rust)';
+    const leftSpan = document.querySelector('.vote-count-label span:first-child');
+    if (leftSpan) {
+      leftSpan.textContent   = left;
+      leftSpan.style.color   = left === 0 ? 'var(--g4)' : 'var(--rust)';
     }
   }
 }
@@ -667,25 +679,55 @@ function pVote() {
   bindVoteButtons();
 }
 
+let _votingInProgress = false;
+
 function bindVoteButtons() {
   document.querySelectorAll('.postit-vote').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const cid      = btn.getAttribute('data-cid');
-      const card     = sess.cards?.[cid];
-      const part     = sess.participants?.[me.uid];
-      const voted    = !!(card?.voters?.[me.uid]);
-      if (!card || !part) return;
-      if (voted) {
-        await update(ref(db, `${SP(sess.id)}/cards/${cid}`), {
-          votes: Math.max(0,(card.votes||0)-1), [`voters/${me.uid}`]:null });
-        await update(ref(db, `${SP(sess.id)}/participants/${me.uid}`),
-          { votesUsed: Math.max(0,(part.votesUsed||0)-1) });
-      } else {
-        if ((part.votesUsed||0) >= sess.votesPerPerson) { toast('No votes left'); return; }
-        await update(ref(db, `${SP(sess.id)}/cards/${cid}`), {
-          votes:(card.votes||0)+1, [`voters/${me.uid}`]:true });
-        await update(ref(db, `${SP(sess.id)}/participants/${me.uid}`),
-          { votesUsed:(part.votesUsed||0)+1 });
+      if (_votingInProgress) return; // debounce — ignore rapid clicks
+      const cid   = btn.getAttribute('data-cid');
+      const part  = sess.participants?.[me.uid];
+      if (!part) return;
+
+      // Read voted state from the LATEST sess snapshot (not stale closure)
+      const currentCard = sess.cards?.[cid];
+      if (!currentCard) return;
+      const voted = !!(currentCard.voters?.[me.uid]);
+
+      _votingInProgress = true;
+      btn.disabled = true;
+
+      try {
+        if (voted) {
+          // Remove vote — use transaction on card votes to prevent race
+          await runTransaction(ref(db, `${SP(sess.id)}/cards/${cid}/votes`), current => {
+            return Math.max(0, (current || 0) - 1);
+          });
+          await update(ref(db, `${SP(sess.id)}/cards/${cid}/voters`), { [me.uid]: null });
+          await runTransaction(ref(db, `${SP(sess.id)}/participants/${me.uid}/votesUsed`), current => {
+            return Math.max(0, (current || 0) - 1);
+          });
+        } else {
+          // Add vote — check current votesUsed from Firebase before adding
+          const partSnap = await get(ref(db, `${SP(sess.id)}/participants/${me.uid}/votesUsed`));
+          const currentUsed = partSnap.val() || 0;
+          if (currentUsed >= sess.votesPerPerson) {
+            toast('No votes left');
+            return;
+          }
+          await runTransaction(ref(db, `${SP(sess.id)}/cards/${cid}/votes`), current => {
+            return (current || 0) + 1;
+          });
+          await update(ref(db, `${SP(sess.id)}/cards/${cid}/voters`), { [me.uid]: true });
+          await runTransaction(ref(db, `${SP(sess.id)}/participants/${me.uid}/votesUsed`), current => {
+            return (current || 0) + 1;
+          });
+        }
+      } catch(e) {
+        toast('Vote error — please try again');
+      } finally {
+        _votingInProgress = false;
+        // btn re-enables via next onValue refresh
       }
     });
   });
@@ -1180,15 +1222,21 @@ document.addEventListener('DOMContentLoaded', () => {
     await doSaveRoom(root);
   });
 
-  // Auto-join from URL
+  // Auto-join from URL — show join screen IMMEDIATELY, verify session in background
   const code = new URLSearchParams(location.search).get('session')||'';
   if (code) {
+    // Show join screen right away — no waiting for Firebase
+    document.getElementById('j-code').value    = code;
+    document.getElementById('j-code').disabled = true;
+    show('s-join');
+    // Verify session exists in background and show error only if not found
     loadOnce(code).then(s => {
-      if (s) {
-        document.getElementById('j-code').value = code;
-        document.getElementById('j-code').disabled = true;
-        show('s-join');
+      if (!s) {
+        toast('Session not found: ' + code);
+        document.getElementById('j-code').disabled = false;
       }
+    }).catch(() => {
+      // Network error — still let user try to join
     });
   }
 });
