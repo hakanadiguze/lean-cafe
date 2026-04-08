@@ -7,32 +7,19 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>">
 <!-- Google Analytics -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-XD6NXRB6KB"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-XD6NXRB6KB');
-</script>
-<!-- Firebase -->
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-XD6NXRB6KB');</script>
+<!-- Firebase SDK -->
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { initializeApp }        from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithPopup, signOut, GoogleAuthProvider, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getDatabase, ref, set, get, update, onValue, off, push, serverTimestamp }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 
-/* ══════════════════════════════════════════════════════
-   FIREBASE CONFIG
-   Replace with your own project config from Firebase Console
-   Project settings → General → Your apps → SDK setup
-══════════════════════════════════════════════════════ */
-// Import the functions you need from the SDKs you need
-//import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
+/* ─────────────────────────────────────────────
+   FIREBASE CONFIG  — replace with your project
+───────────────────────────────────────────── */
+const FB = {
   apiKey: "AIzaSyAjB-GfWHXft2BtphvdY9FpAuubooP6TuQ",
   authDomain: "lean-cafe.firebaseapp.com",
   databaseURL: "https://lean-cafe-default-rtdb.europe-west1.firebasedatabase.app",
@@ -42,1264 +29,1336 @@ const firebaseConfig = {
   appId: "1:278743586382:web:ceae868adac52977db151f"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-//const app  = initializeApp(FIREBASE_CONFIG);
+const app  = initializeApp(FB);
 const auth = getAuth(app);
 const db   = getDatabase(app);
 const gp   = new GoogleAuthProvider();
 
-/* ══════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────
    STATE
-══════════════════════════════════════════════════════ */
-let currentUser  = null;   // Firebase Auth user (facilitator only)
-let sess         = null;   // live session snapshot
-let me           = { name: '', isAdmin: false, uid: '' };
-let activeRoom   = null;
-let sessionRef   = null;   // Firebase DB ref being listened to
-let _lastPhase   = -1;
-let _timerRafs   = {};     // phase -> requestAnimationFrame id
+───────────────────────────────────────────── */
+let fbUser    = null;   // Firebase Auth user (Google-signed in, optional)
+let sess      = null;   // live session snapshot
+let me        = { name:'', uid:'', isAdmin:false };
+let activeRid = null;   // room id open in discuss modal
+let sessRef   = null;   // live Firebase ref
+let _lastPhase = -1;
+let _rafIds    = {};
 
-/* ══════════════════════════════════════════════════════
-   FIREBASE HELPERS
-══════════════════════════════════════════════════════ */
-function sessPath(id)  { return `lean-cafe/sessions/${id}`; }
-function genId()       { return 'RETRO-' + Math.random().toString(36).substr(2,4).toUpperCase(); }
-function genUid()      { return Date.now().toString(36) + Math.random().toString(36).substr(2,6); }
+/* ─────────────────────────────────────────────
+   FIREBASE PATHS
+───────────────────────────────────────────── */
+const SP  = id => `lc/sessions/${id}`;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const sid = () => 'RETRO-' + Math.random().toString(36).slice(2,6).toUpperCase();
 
-/* Write full session */
-async function persistFull(s) {
-  sess = s;
-  await set(ref(db, sessPath(s.id)), s);
-}
+/* ─────────────────────────────────────────────
+   AUTH STATE LISTENER
+───────────────────────────────────────────── */
+onAuthStateChanged(auth, user => {
+  fbUser = user;
+  renderAuthBadges();
+});
 
-/* Partial update — only changed keys */
-async function persistPatch(id, patch) {
-  await update(ref(db, sessPath(id)), patch);
-}
-
-/* Read once */
-async function loadOnce(id) {
-  const snap = await get(ref(db, sessPath(id)));
-  if (!snap.exists()) return null;
-  sess = snap.val();
-  return sess;
-}
-
-/* Subscribe to live updates */
-function subscribeSession(id, onUpdate) {
-  if (sessionRef) off(sessionRef);
-  sessionRef = ref(db, sessPath(id));
-  onValue(sessionRef, snap => {
-    if (!snap.exists()) return;
-    const s = snap.val();
-    sess = s;
-    onUpdate(s);
+function renderAuthBadges() {
+  ['auth-home','auth-admin'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (fbUser) {
+      el.innerHTML =
+        `<img src="${esc(fbUser.photoURL||'')}" style="width:24px;height:24px;border-radius:50%;object-fit:cover">
+         <span style="font-size:13px;color:var(--g4)">${esc(fbUser.displayName||fbUser.email)}</span>
+         <button class="btn btn-sm btn-ghost" id="${id}-signout">Sign out</button>`;
+      document.getElementById(id+'-signout')?.addEventListener('click', () => signOut(auth));
+    } else {
+      el.innerHTML = `<button class="btn btn-sm btn-google" id="${id}-signin">
+        <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.34-8.16 2.34-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>`;
+      document.getElementById(id+'-signin')?.addEventListener('click', () =>
+        signInWithPopup(auth, gp).catch(e => toast('Sign-in failed: ' + e.message)));
+    }
   });
 }
 
-function unsubscribe() {
-  if (sessionRef) { off(sessionRef); sessionRef = null; }
-}
-
-/* ══════════════════════════════════════════════════════
-   AUTH STATE
-══════════════════════════════════════════════════════ */
-onAuthStateChanged(auth, user => {
-  currentUser = user;
-  const badge = document.getElementById('auth-badge');
-  if (!badge) return;
-  if (user) {
-    badge.innerHTML =
-      `<img src="${user.photoURL}" style="width:22px;height:22px;border-radius:50%;object-fit:cover">` +
-      `<span style="font-size:12px;color:var(--ink3)">${esc(user.displayName)}</span>` +
-      `<button id="btn-signout" class="btn btn-ghost btn-sm">Sign out</button>`;
-    document.getElementById('btn-signout').addEventListener('click', () => signOut(auth));
-  } else {
-    badge.innerHTML = '';
-  }
-});
-
-async function signInGoogle() {
-  try {
-    await signInWithPopup(auth, gp);
-  } catch(e) {
-    toast('Sign-in failed: ' + e.message);
-  }
-}
-
-/* ══════════════════════════════════════════════════════
-   SCREEN
-══════════════════════════════════════════════════════ */
+/* ─────────────────────────────────────────────
+   SCREEN ROUTING
+───────────────────────────────────────────── */
 function show(id) {
   document.querySelectorAll('.scr').forEach(s => s.classList.remove('on'));
-  document.getElementById(id).classList.add('on');
+  document.getElementById(id)?.classList.add('on');
 }
 
-/* ══════════════════════════════════════════════════════
-   TOAST
-══════════════════════════════════════════════════════ */
-let _tt;
-function toast(msg) {
+function toast(msg, dur=2800) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('on');
-  clearTimeout(_tt); _tt = setTimeout(() => t.classList.remove('on'), 2800);
+  setTimeout(() => t.classList.remove('on'), dur);
 }
 
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-/* ══════════════════════════════════════════════════════
-   CREATE SESSION  (facilitator only)
-══════════════════════════════════════════════════════ */
-async function createSession() {
-  if (!currentUser) { toast('Please sign in with Google first'); return; }
-  const title  = document.getElementById('f-title').value.trim() || 'Retrospective';
-  const team   = document.getElementById('f-team').value.trim()  || 'Team';
-  const votes  = parseInt(document.getElementById('f-votes').value) || 5;
-  const admin  = (document.getElementById('f-admin').value || '').trim().slice(0,15);
-  if (!admin) { toast('Please enter your display name'); return; }
+function arr(obj) { return obj ? Object.values(obj) : []; }
+function timeAgo(ts) {
+  if (!ts) return '';
+  const d = Math.floor((Date.now() - ts) / 86400000);
+  if (d === 0) return 'today';
+  if (d === 1) return '1d ago';
+  return d + 'd ago';
+}
 
-  const id  = genId();
-  const uid = currentUser.uid;  // use Firebase Auth UID for facilitator
+/* ─────────────────────────────────────────────
+   PHASE CONSTANTS
+───────────────────────────────────────────── */
+const PHASES = { 1:'Write Cards', 2:'Vote', 3:'Discuss', 4:'Report' };
+const PHASE_NUMS = [1,2,3,4];
+
+/* ─────────────────────────────────────────────
+   CREATE SESSION  (guest or admin)
+───────────────────────────────────────────── */
+async function createSession({ title, votesPerPerson, userName, teamId=null }) {
+  const id   = sid();
+  const myUid = fbUser ? fbUser.uid : uid();
   const s = {
-    id, title, team, votesPerPerson: votes,
-    adminName: admin, adminUid: uid, adminEmail: currentUser.email,
-    phase: 1, cards: {}, participants: {}, rooms: {}, roomData: {}, timers: {},
-    createdAt: new Date().toISOString()
+    id, title,
+    teamId: teamId || null,
+    votesPerPerson,
+    adminUid:  myUid,
+    adminName: userName,
+    isGuestAdmin: !fbUser,
+    phase: 1,
+    cards: {}, participants: {}, rooms: {}, roomData: {}, timers: {},
+    createdAt: Date.now(),
+    closed: false
   };
-  // Add facilitator as first participant
-  s.participants[uid] = { name: admin, uid, isAdmin: true, votesUsed: 0 };
+  s.participants[myUid] = { name: userName, uid: myUid, isAdmin: true, votesUsed: 0 };
 
-  const btn = document.getElementById('btn-create');
-  btn.disabled = true; btn.textContent = 'Creating…';
-  try {
-    await persistFull(s);
-    me = { name: admin, isAdmin: true, uid };
-    const url = location.origin + location.pathname + '?session=' + id;
-    document.getElementById('lnk-title').textContent = title;
-    document.getElementById('lnk-url').textContent   = url;
-    document.getElementById('lnk-code').textContent  = id;
-    document.getElementById('lnk-meta').innerHTML =
-      `<strong>${esc(title)}</strong><br>Team: <strong>${esc(team)}</strong> &nbsp;·&nbsp; ` +
-      `Votes/person: <strong>${votes}</strong> &nbsp;·&nbsp; Facilitator: <strong>${esc(admin)}</strong>`;
-    show('s-link');
-  } catch(e) {
-    toast('Error creating session: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Create Session & Get Link →';
+  await set(ref(db, SP(id)), s);
+
+  // If logged in admin, also register under their admin profile
+  if (fbUser) {
+    await update(ref(db, `lc/admins/${fbUser.uid}/sessions/${id}`),
+      { id, title, createdAt: Date.now(), teamId: teamId || null });
   }
+  return { id, uid: myUid };
 }
 
-/* ══════════════════════════════════════════════════════
-   JOIN SESSION  (participants — no auth required)
-══════════════════════════════════════════════════════ */
-async function joinSession() {
-  const code = (document.getElementById('j-code').value || '').trim().toUpperCase();
-  const name = (document.getElementById('j-name').value || '').trim().slice(0,15);
-  if (!code) { toast('Please enter the session code'); return; }
-  if (!name) { toast('Please enter your name'); return; }
-
-  const btn = document.getElementById('btn-join');
-  btn.disabled = true; btn.textContent = 'Joining…';
-  try {
-    const s = await loadOnce(code);
-    if (!s) { toast('Session not found: ' + code); return; }
-
-    // Always generate a new uid — supports duplicate display names
-    const uid = genUid();
-    me = { name, isAdmin: false, uid };
-
-    // Register participant
-    await update(ref(db, `${sessPath(code)}/participants/${uid}`),
-      { name, uid, isAdmin: false, votesUsed: 0 });
-
-    enterSession(code);
-  } catch(e) {
-    toast('Error joining: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Join Session →';
-  }
-}
-
-/* ══════════════════════════════════════════════════════
-   ENTER SESSION
-══════════════════════════════════════════════════════ */
-function enterSession(sessionId) {
-  document.getElementById('ses-title').textContent = sess ? sess.title : sessionId;
-  document.getElementById('ses-user').textContent  = me.name + (me.isAdmin ? ' (facilitator)' : '');
-  show('s-session');
-
-  subscribeSession(sessionId, s => {
-    sess = s;
-    document.getElementById('ses-title').textContent = s.title;
-    // Only full re-render on phase change — never on same phase (preserves inputs)
-    if (s.phase !== _lastPhase) {
-      _lastPhase = s.phase;
-      renderPhase();
+/* ─────────────────────────────────────────────
+   HOME SCREEN
+───────────────────────────────────────────── */
+function initHome() {
+  document.getElementById('home-guest-btn').addEventListener('click', () => show('s-guest-create'));
+  document.getElementById('home-admin-btn').addEventListener('click', () => {
+    if (!fbUser) {
+      signInWithPopup(auth, gp)
+        .then(() => { show('s-admin'); loadAdminSessions(); })
+        .catch(e => toast('Sign-in failed: ' + e.message));
+    } else {
+      show('s-admin');
+      loadAdminSessions();
     }
-    // Always update timer display (just textContent — no DOM re-render)
-    _tickTimer(s.phase, s);
   });
 }
 
-/* ══════════════════════════════════════════════════════
-   PHASE ROUTER
-══════════════════════════════════════════════════════ */
-function renderPhase() {
-  if (!sess) return;
-  // Cancel all timer animation frames
-  Object.values(_timerRafs).forEach(id => cancelAnimationFrame(id));
-  _timerRafs = {};
-  updateSteps();
-  const labels = ['','Write Cards','Vote','Choose Room','Discuss','Report'];
-  document.getElementById('ses-phase').textContent = labels[sess.phase] || '';
-  ([null, p1, p2, p3, p4, p5])[sess.phase]?.();
+/* ─────────────────────────────────────────────
+   GUEST CREATE SESSION
+───────────────────────────────────────────── */
+function initGuestCreate() {
+  document.getElementById('guest-create-back').addEventListener('click', () => show('s-home'));
+  document.getElementById('guest-create-btn').addEventListener('click', async () => {
+    const title  = (document.getElementById('gc-title').value||'').trim() || 'Retrospective';
+    const votes  = parseInt(document.getElementById('gc-votes').value) || 3;
+    const name   = (document.getElementById('gc-name').value||'').trim().slice(0,15);
+    if (!name) { toast('Please enter your name'); return; }
+    const btn = document.getElementById('guest-create-btn');
+    btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const { id, uid: myUid } = await createSession({ title, votesPerPerson: votes, userName: name });
+      me = { name, uid: myUid, isAdmin: true };
+      sess = await loadOnce(id);
+      showLinkScreen(id);
+    } catch(e) { toast('Error: ' + e.message); }
+    finally { btn.disabled=false; btn.textContent='Create Session →'; }
+  });
 }
 
-function updateSteps() {
-  for (let i = 1; i <= 5; i++) {
-    const el = document.getElementById('st-' + i);
+/* ─────────────────────────────────────────────
+   ADMIN PANEL
+───────────────────────────────────────────── */
+let adminSessRef = null;
+
+function loadAdminSessions() {
+  if (!fbUser) return;
+  if (adminSessRef) off(adminSessRef);
+  adminSessRef = ref(db, `lc/admins/${fbUser.uid}/sessions`);
+  onValue(adminSessRef, snap => {
+    const list = snap.val() ? Object.values(snap.val()) : [];
+    renderAdminSessions(list.sort((a,b) => b.createdAt - a.createdAt));
+  });
+}
+
+function renderAdminSessions(list) {
+  const el = document.getElementById('admin-sessions-list');
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state">No sessions yet. Create your first one!</div>';
+    return;
+  }
+  el.innerHTML = list.map(s => `
+    <div class="admin-sess-card" data-id="${s.id}">
+      <div class="admin-sess-info">
+        <div class="admin-sess-title">${esc(s.title)}</div>
+        <div class="admin-sess-meta">${s.teamId ? '🏷 '+esc(s.teamId) : 'No team'} &nbsp;·&nbsp; ${new Date(s.createdAt).toLocaleDateString('en-GB')}</div>
+        <div class="admin-sess-code">${s.id}</div>
+      </div>
+      <div class="admin-sess-actions">
+        <button class="btn btn-sm btn-ink open-sess" data-id="${s.id}">Open</button>
+        <button class="btn btn-sm btn-ghost del-sess" data-id="${s.id}">Delete</button>
+      </div>
+    </div>`).join('');
+
+  el.querySelectorAll('.open-sess').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-id');
+    const s  = await loadOnce(id);
+    if (!s) { toast('Session not found'); return; }
+    me = { name: s.adminName, uid: fbUser.uid, isAdmin: true };
+    enterSession(id);
+  }));
+
+  el.querySelectorAll('.del-sess').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.getAttribute('data-id');
+    if (!confirm('Delete this session and all its data?')) return;
+    await set(ref(db, SP(id)), null);
+    await set(ref(db, `lc/admins/${fbUser.uid}/sessions/${id}`), null);
+    toast('Session deleted');
+  }));
+}
+
+/* ─────────────────────────────────────────────
+   ADMIN: CREATE SESSION (from admin panel)
+───────────────────────────────────────────── */
+function initAdminCreateSession() {
+  document.getElementById('admin-create-btn').addEventListener('click', () => {
+    document.getElementById('admin-create-modal').classList.add('on');
+  });
+  document.getElementById('acm-cancel').addEventListener('click', () => {
+    document.getElementById('admin-create-modal').classList.remove('on');
+  });
+  document.getElementById('acm-submit').addEventListener('click', async () => {
+    if (!fbUser) { toast('Please sign in first'); return; }
+    const title = (document.getElementById('acm-title').value||'').trim() || 'Retrospective';
+    const votes = parseInt(document.getElementById('acm-votes').value) || 3;
+    const name  = (document.getElementById('acm-name').value||'').trim().slice(0,15) || fbUser.displayName?.slice(0,15) || 'Admin';
+    const btn   = document.getElementById('acm-submit');
+    btn.disabled = true; btn.textContent = 'Creating…';
+    try {
+      const { id, uid: myUid } = await createSession({ title, votesPerPerson: votes, userName: name });
+      me = { name, uid: myUid, isAdmin: true };
+      sess = await loadOnce(id);
+      document.getElementById('admin-create-modal').classList.remove('on');
+      showLinkScreen(id);
+    } catch(e) { toast('Error: '+e.message); }
+    finally { btn.disabled=false; btn.textContent='Create Session'; }
+  });
+}
+
+/* ─────────────────────────────────────────────
+   LINK SHARE SCREEN
+───────────────────────────────────────────── */
+function showLinkScreen(id) {
+  const url = location.origin + location.pathname + '?session=' + id;
+  document.getElementById('lnk-title').textContent = sess?.title || id;
+  document.getElementById('lnk-url').textContent   = url;
+  document.getElementById('lnk-code').textContent  = id;
+  show('s-link');
+}
+
+/* ─────────────────────────────────────────────
+   JOIN SCREEN  (participants via link)
+───────────────────────────────────────────── */
+function initJoin() {
+  document.getElementById('join-back').addEventListener('click', () => show('s-home'));
+  document.getElementById('btn-join').addEventListener('click', doJoin);
+  document.getElementById('j-name').addEventListener('keydown', e => { if(e.key==='Enter') doJoin(); });
+}
+
+async function doJoin() {
+  const code = (document.getElementById('j-code').value||'').trim().toUpperCase();
+  const name = (document.getElementById('j-name').value||'').trim().slice(0,15);
+  if (!name) { toast('Please enter your name'); return; }
+  const btn = document.getElementById('btn-join');
+  btn.disabled=true; btn.textContent='Joining…';
+  try {
+    const s = await loadOnce(code);
+    if (!s) { toast('Session not found: '+code); return; }
+    const myUid = uid();
+    me = { name, uid: myUid, isAdmin: false };
+    await update(ref(db, `${SP(code)}/participants/${myUid}`),
+      { name, uid: myUid, isAdmin: false, votesUsed: 0 });
+    enterSession(code);
+  } catch(e) { toast('Error: '+e.message); }
+  finally { btn.disabled=false; btn.textContent='Join Session →'; }
+}
+
+/* ─────────────────────────────────────────────
+   SESSION ENTRY
+───────────────────────────────────────────── */
+async function loadOnce(id) {
+  const snap = await get(ref(db, SP(id)));
+  if (!snap.exists()) return null;
+  return sess = snap.val();
+}
+
+function enterSession(id) {
+  if (sessRef) off(sessRef);
+  sessRef = ref(db, SP(id));
+  onValue(sessRef, snap => {
+    if (!snap.exists()) return;
+    sess = snap.val();
+    document.getElementById('ses-title').textContent = sess.title;
+    if (sess.phase !== _lastPhase) { _lastPhase = sess.phase; renderPhase(); }
+    else { updateTimerOnly(sess.phase, sess); }
+  });
+  document.getElementById('ses-title').textContent = sess?.title || id;
+  document.getElementById('ses-user').textContent  = me.name + (me.isAdmin ? ' ★' : '');
+  show('s-session');
+  _lastPhase = sess?.phase || 1;
+  renderPhase();
+}
+
+/* ─────────────────────────────────────────────
+   PHASE RENDER ROUTER
+───────────────────────────────────────────── */
+function renderPhase() {
+  if (!sess) return;
+  Object.values(_rafIds).forEach(cancelAnimationFrame);
+  _rafIds = {};
+  updateStepBar();
+  document.getElementById('ses-phase-label').textContent = PHASES[sess.phase] || '';
+  const fns = { 1:pWrite, 2:pVote, 3:pDiscuss, 4:pReport };
+  fns[sess.phase]?.();
+}
+
+function updateStepBar() {
+  PHASE_NUMS.forEach(n => {
+    const el = document.getElementById('step-'+n);
+    if (!el) return;
     el.classList.remove('on','done');
-    if (i < sess.phase)  el.classList.add('done');
-    if (i === sess.phase) el.classList.add('on');
+    if (n < sess.phase) el.classList.add('done');
+    if (n === sess.phase) el.classList.add('on');
+  });
+  // Navigation arrows for admin
+  const prev = document.getElementById('nav-prev');
+  const next = document.getElementById('nav-next');
+  if (prev && next) {
+    prev.style.display = (me.isAdmin && sess.phase > 1) ? 'inline-flex' : 'none';
+    next.style.display = me.isAdmin ? 'inline-flex' : 'none';
+    next.textContent   = sess.phase < 4 ? 'Next Phase →' : 'Finish →';
+    next.disabled      = false;
   }
 }
 
 function setArea(html) { document.getElementById('phase-area').innerHTML = html; }
 
-function infoBox(icon, title, steps) {
-  return `<div class="infobox"><div class="infobox-title">${icon} ${title}</div>` +
-    `<ul class="infobox-steps">${steps.map(s => `<li>${s}</li>`).join('')}</ul></div>`;
-}
+/* ─────────────────────────────────────────────
+   POST-IT CARD RENDERER
+───────────────────────────────────────────── */
+const POST_IT_COLORS = ['#FFEF7F','#FFD6E7','#D4F1C4','#C4E4F1','#F1D4F4','#FFD9B0'];
 
-function adminBanner(text) {
-  return `<div class="admin-banner">🎯 <strong>Facilitator action required:</strong> ${text}</div>`;
-}
+function postItCard({ id, text, author, createdAt, votes=0, uid:cardUid, showVote=false, voted=false, canVote=false }) {
+  const color = POST_IT_COLORS[Math.abs(hashStr(author||'')) % POST_IT_COLORS.length];
+  const voteBtn = showVote
+    ? `<button class="postit-vote${voted?' voted':''}" data-cid="${id}" ${canVote||voted?'':'disabled'}>
+        ${voted ? '✓' : '+'} ${votes > 0 ? votes : ''}
+       </button>`
+    : `<span class="postit-vcount">${votes > 0 ? '+'+votes : '+0'}</span>`;
 
-function waitingMsg(text) {
-  return `<div class="waiting-msg">⏳ <strong>Waiting for facilitator</strong> to ${text}</div>`;
-}
-
-/* ══════════════════════════════════════════════════════
-   TIMER  (per-phase, stored in Firebase)
-══════════════════════════════════════════════════════ */
-const TIMER_DEFAULTS = { 1:10, 2:8, 3:5, 4:20 };
-
-async function startPhaseTimer(phase, minutes) {
-  const dur = minutes * 60;
-  await update(ref(db, `${sessPath(sess.id)}/timers/${phase}`),
-    { running: true, end: Date.now() + dur * 1000, total: dur });
-  toast(`Timer started: ${minutes} minutes`);
-}
-
-async function stopPhaseTimer(phase) {
-  await update(ref(db, `${sessPath(sess.id)}/timers/${phase}`),
-    { running: false, end: 0, total: 0 });
-  toast('Timer stopped');
-}
-
-function _tickTimer(phase, s) {
-  const dispEl = document.getElementById(`timer-disp-${phase}`);
-  const wrapEl = document.getElementById(`timer-wrap-${phase}`);
-  const lblEl  = document.getElementById(`timer-lbl-${phase}`);
-  if (!dispEl || !wrapEl) return;
-
-  const t = s?.timers?.[phase];
-  if (!t || !t.running || !t.end) {
-    dispEl.textContent = '--:--';
-    dispEl.className = 'timer-display';
-    wrapEl.className = 'timer-wrap';
-    if (lblEl) lblEl.textContent = 'Timer not started';
-    return;
-  }
-
-  const rem  = Math.max(0, Math.ceil((t.end - Date.now()) / 1000));
-  const mins = Math.floor(rem / 60);
-  const secs = rem % 60;
-  dispEl.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
-
-  const pct = t.total > 0 ? rem / t.total : 1;
-  if (rem === 0) {
-    dispEl.className = 'timer-display danger';
-    wrapEl.className = 'timer-wrap danger';
-    if (lblEl) lblEl.textContent = "⏰ Time's up!";
-  } else if (pct <= 0.25) {
-    dispEl.className = 'timer-display danger';
-    wrapEl.className = 'timer-wrap danger';
-    if (lblEl) lblEl.textContent = '⚡ Less than 25% remaining!';
-  } else if (pct <= 0.5) {
-    dispEl.className = 'timer-display warn';
-    wrapEl.className = 'timer-wrap warn';
-    if (lblEl) lblEl.textContent = '⏳ Half the time used';
-  } else {
-    dispEl.className = 'timer-display';
-    wrapEl.className = 'timer-wrap';
-    if (lblEl) lblEl.textContent = 'Timer running';
-  }
-
-  // Schedule next tick via rAF for smooth countdown
-  if (rem > 0) {
-    _timerRafs[phase] = requestAnimationFrame(() => _tickTimer(phase, sess));
-  }
-}
-
-function buildTimerHTML(phase) {
-  const def = TIMER_DEFAULTS[phase] || 10;
-  const adminControls = me.isAdmin
-    ? `<div class="timer-controls">
-        <input class="inp" id="timer-mins-${phase}" type="number" min="1" max="90" value="${def}"
-          style="width:70px;font-family:var(--mono);text-align:center;padding:6px 8px">
-        <span style="font-size:13px;color:var(--ink3)">min</span>
-        <button class="btn btn-sage btn-sm" id="btn-timer-start-${phase}">▶ Start</button>
-        <button class="btn btn-ghost btn-sm" id="btn-timer-stop-${phase}">■ Stop</button>
-      </div>`
-    : `<div style="font-size:12px;color:var(--ink3)">Set and started by facilitator</div>`;
-
-  return `<div class="timer-wrap" id="timer-wrap-${phase}">
-    <div>
-      <div class="timer-display" id="timer-disp-${phase}">--:--</div>
-      <div class="timer-label" id="timer-lbl-${phase}">Timer not started</div>
+  return `<div class="postit" style="background:${color}" data-cid="${id}">
+    <div class="postit-author">${esc(author||'Anonymous').toUpperCase()}</div>
+    <div class="postit-text">${esc(text)}</div>
+    <div class="postit-footer">
+      <span class="postit-time">${timeAgo(createdAt)}</span>
+      ${voteBtn}
+      ${me.uid === cardUid || me.isAdmin ? `<button class="postit-del" data-cid="${id}">✕</button>` : ''}
     </div>
-    ${adminControls}
   </div>`;
 }
 
-function bindTimerControls(phase) {
-  document.getElementById(`btn-timer-start-${phase}`)?.addEventListener('click', () => {
-    const mins = parseInt(document.getElementById(`timer-mins-${phase}`).value) || 10;
-    startPhaseTimer(phase, mins);
-  });
-  document.getElementById(`btn-timer-stop-${phase}`)?.addEventListener('click', () => {
-    stopPhaseTimer(phase);
-  });
-  // Kick off display immediately with current data
-  _tickTimer(phase, sess);
+function hashStr(str) {
+  let h = 0;
+  for (let i=0; i<str.length; i++) h = (Math.imul(31,h) + str.charCodeAt(i)) | 0;
+  return h;
 }
 
-/* ══════════════════════════════════════════════════════
-   HELPERS — convert Firebase object to array
-══════════════════════════════════════════════════════ */
-function objToArr(obj) {
-  if (!obj) return [];
-  return Object.values(obj);
-}
-
-function resolveParticipantName(uid) {
-  const parts = sess?.participants || {};
-  return parts[uid]?.name || uid;
-}
-
-/* ══════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────
    PHASE 1 — WRITE CARDS
-══════════════════════════════════════════════════════ */
-function p1() {
-  const cards    = objToArr(sess.cards);
-  const myCards  = cards.filter(c => c.uid === me.uid);
+───────────────────────────────────────────── */
+function pWrite() {
+  const cards = arr(sess.cards).sort((a,b) => (a.createdAt||0)-(b.createdAt||0));
 
-  const info = infoBox('✍️','Your turn: Write your cards',[
-    'Think about what went well, what went wrong, and what to improve.',
-    'Type <strong>one topic per card</strong>. Be short and clear.',
-    'Press <strong>Add Card</strong> after each one. Add as many as you like.',
-    'All cards are visible to everyone — this is intentional.',
-    'When everyone is done, the <strong>facilitator</strong> will open voting.'
-  ]);
-
-  const adminCtrl = me.isAdmin
-    ? adminBanner('When everyone has written their cards, click <strong>Open Voting</strong>.') +
-      `<button id="p1-next" class="btn btn-rust" style="margin-bottom:18px">Open Voting →</button>`
-    : waitingMsg('open voting. Keep writing!');
-
-  const myList = myCards.length === 0
-    ? '<p style="color:var(--ink4);font-size:13px;padding:4px 0">No cards yet.</p>'
-    : myCards.map(c =>
-        `<div style="font-size:13px;padding:8px 10px;background:var(--cream);border-radius:7px;border:1px solid var(--bdr);display:flex;align-items:flex-start;gap:7px">
-          <span style="flex:1">${esc(c.text)}</span>
-          <button class="btn btn-ghost btn-sm del-card" data-id="${c.id}" style="padding:3px 8px;flex-shrink:0">✕</button>
-        </div>`
-      ).join('');
-
-  const allCards = cards.length === 0
-    ? '<div style="text-align:center;padding:32px 20px;color:var(--ink4)"><div style="font-size:32px;margin-bottom:8px">📝</div><p>No cards yet — be the first!</p></div>'
-    : `<div class="gauto">${cards.map((c,i) =>
-        `<div class="sticky s${i%6}">
-          <div style="font-size:13px;line-height:1.5;flex:1">${esc(c.text)}</div>
-          <div style="font-size:11px;color:var(--ink4);font-family:var(--mono)">${esc(c.author)}</div>
-        </div>`
-      ).join('')}</div>`;
-
-  setArea(
-    info + adminCtrl + buildTimerHTML(1) +
-    `<div class="g2" style="margin-bottom:24px">
-      <div class="card">
-        <label class="lbl">Add a new card</label>
-        <textarea class="txa" id="card-text" placeholder="What do you want to discuss? One topic per card..." rows="3"></textarea>
-        <button id="add-card" class="btn btn-ink" style="margin-top:10px;width:100%">Add Card ↵</button>
-      </div>
-      <div class="card">
-        <label class="lbl">My cards (${myCards.length})</label>
-        <div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto">${myList}</div>
-      </div>
-    </div>
-    <h3 style="margin-bottom:14px">All cards — visible to everyone (${cards.length})</h3>
-    ${allCards}`
-  );
-
-  bindTimerControls(1);
-
-  document.getElementById('add-card').addEventListener('click', async () => {
-    const t = (document.getElementById('card-text').value || '').trim();
-    if (!t) { toast('Please write something first'); return; }
-    const cardId = genUid();
-    await update(ref(db, `${sessPath(sess.id)}/cards/${cardId}`),
-      { id: cardId, text: t, author: me.name, uid: me.uid, votes: 0, voters: {} });
-    document.getElementById('card-text').value = '';
-    toast('Card added ✓');
-    // No renderPhase() — Firebase listener will update sess and re-render is triggered by phase check only
-    // But cards added in same phase won't re-render — we force a cards-only re-render here
-    const s = await loadOnce(sess.id);
-    if (s) {
-      sess = s;
-      const newCards = objToArr(s.cards);
-      const allCardsEl = document.querySelector('.gauto') || document.querySelector('[style*="text-align:center"]');
-      if (allCardsEl && allCardsEl.parentElement) {
-        // refresh all cards area only
-        renderPhase();
-      }
-    }
-  });
-
-  document.getElementById('card-text').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('add-card').click(); }
-  });
-
-  document.querySelectorAll('.del-card').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const cid = btn.getAttribute('data-id');
-      const card = sess.cards?.[cid];
-      if (card && card.uid !== me.uid && !me.isAdmin) { toast('You can only delete your own cards'); return; }
-      await update(ref(db, `${sessPath(sess.id)}/cards`), { [cid]: null });
-    });
-  });
-
-  if (me.isAdmin) {
-    document.getElementById('p1-next').addEventListener('click', async () => {
-      const cards2 = objToArr(sess.cards);
-      if (cards2.length < 2) { toast('Need at least 2 cards'); return; }
-      await update(ref(db, sessPath(sess.id)), { phase: 2 });
-    });
-  }
-}
-
-/* ══════════════════════════════════════════════════════
-   PHASE 2 — VOTE
-══════════════════════════════════════════════════════ */
-function p2() {
-  const cards     = objToArr(sess.cards).sort((a,b) => (b.votes||0)-(a.votes||0));
-  const part      = sess.participants?.[me.uid] || { votesUsed: 0 };
-  const used      = part.votesUsed || 0;
-  const left      = sess.votesPerPerson - used;
-  const totalVotes = cards.reduce((t,c) => t+(c.votes||0), 0);
-
-  const tokens = Array.from({length: sess.votesPerPerson}, (_,i) =>
-    `<span class="token${i < used ? ' used':''}"></span>`).join(' ');
-
-  const info = infoBox('🗳️','Your turn: Vote for the most important topics',[
-    `You have <strong>${sess.votesPerPerson} votes</strong>. Spread them however you like.`,
-    'Click <strong>+ Vote</strong> on topics you want to discuss.',
-    'Click <strong>✓ Voted</strong> again to take a vote back.',
-    'Top-voted cards become the discussion rooms.',
-    'When everyone is done, the <strong>facilitator</strong> closes voting.'
-  ]);
-
-  const adminCtrl = me.isAdmin
-    ? adminBanner('When everyone has voted, click <strong>Close Voting</strong>.') +
-      `<button id="p2-next" class="btn btn-rust" style="margin-bottom:18px">Close Voting & Create Rooms →</button>`
-    : waitingMsg('close voting.');
-
-  const cardsHtml = cards.map((c,i) => {
-    const voted   = !!(c.voters?.[me.uid]);
-    const canVote = !voted && left > 0;
-    return `<div class="sticky s${i%6}${voted?' sticky-voted':''}" style="cursor:default">
-      <div style="font-size:13px;line-height:1.5;flex:1">${esc(c.text)}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:11px;color:var(--ink4);font-family:var(--mono)">${esc(c.author)}</div>
-        <div style="display:flex;align-items:center;gap:7px">
-          <span style="font-family:var(--mono);font-size:15px;font-weight:500">${c.votes||0}</span>
-          <button class="vbtn${voted?' voted':''}" data-cid="${c.id}" data-voted="${voted?'1':'0'}"
-            ${canVote||voted?'':' disabled'}>${voted ? '✓ Voted' : '+ Vote'}</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-
-  setArea(
-    info + adminCtrl + buildTimerHTML(2) +
-    `<div class="card" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+  setArea(`
+    <div class="phase-intro">
+      <div class="phase-intro-icon">✍️</div>
       <div>
-        <div style="font-size:12px;color:var(--ink3);margin-bottom:3px">Your remaining votes</div>
-        <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:${left===0?'var(--ink4)':'var(--rust)'}">
-          ${left}<span style="font-size:13px;color:var(--ink4)"> / ${sess.votesPerPerson}</span>
+        <div class="phase-intro-title">Write your cards</div>
+        <div class="phase-intro-steps">
+          <div class="pstep">Write one topic per sticky note — anything you want to discuss with the team.</div>
+          <div class="pstep">Keep it short and clear. You can add as many notes as you like.</div>
+          <div class="pstep">Everyone can see all notes as they appear — this is intentional.</div>
+          <div class="pstep">When everyone is done, the <strong>facilitator</strong> will move to voting.</div>
         </div>
       </div>
-      <div style="display:flex;gap:3px;flex-wrap:wrap;max-width:200px">${tokens}</div>
-      <div style="font-size:12px;color:var(--ink3);text-align:right">${totalVotes} total votes<br>${Object.keys(sess.participants||{}).length} participants</div>
     </div>
-    <div class="gauto">${cardsHtml}</div>`
-  );
 
-  bindTimerControls(2);
+    ${buildTimer(1)}
 
-  document.querySelectorAll('.vbtn').forEach(btn => {
+    <div class="write-bar">
+      <textarea id="card-input" class="postit-input" placeholder="What do you want to discuss? Type here and press Add…" rows="2"></textarea>
+      <button id="add-card-btn" class="btn btn-ink">Add Note</button>
+    </div>
+
+    <div class="postit-grid" id="cards-grid">
+      ${cards.length === 0
+        ? '<div class="empty-state">No notes yet — write the first one!</div>'
+        : cards.map(c => postItCard({ ...c, showVote:false })).join('')}
+    </div>
+  `);
+
+  bindTimer(1);
+
+  document.getElementById('add-card-btn').addEventListener('click', addCard);
+  document.getElementById('card-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addCard(); }
+  });
+
+  document.querySelectorAll('.postit-del').forEach(btn => btn.addEventListener('click', async () => {
+    const cid = btn.getAttribute('data-cid');
+    await update(ref(db, `${SP(sess.id)}/cards`), { [cid]: null });
+  }));
+}
+
+async function addCard() {
+  const input = document.getElementById('card-input');
+  const text  = (input.value||'').trim();
+  if (!text) { toast('Please write something first'); return; }
+  const cid = uid();
+  await update(ref(db, `${SP(sess.id)}/cards/${cid}`), {
+    id: cid, text, author: me.name, uid: me.uid,
+    votes: 0, voters: {}, createdAt: Date.now()
+  });
+  input.value = '';
+  input.focus();
+}
+
+/* ─────────────────────────────────────────────
+   PHASE 2 — VOTE
+───────────────────────────────────────────── */
+function pVote() {
+  const part  = sess.participants?.[me.uid] || { votesUsed:0 };
+  const used  = part.votesUsed || 0;
+  const left  = sess.votesPerPerson - used;
+  const cards = arr(sess.cards).sort((a,b) => (b.votes||0)-(a.votes||0));
+
+  setArea(`
+    <div class="phase-intro">
+      <div class="phase-intro-icon">🗳️</div>
+      <div>
+        <div class="phase-intro-title">Vote for the most important topics</div>
+        <div class="phase-intro-steps">
+          <div class="pstep">You have <strong>${sess.votesPerPerson} votes</strong> in total. Use them on the topics you care about most.</div>
+          <div class="pstep">Click the <strong>+</strong> button on any note to vote. You can vote for the same note more than once.</div>
+          <div class="pstep">Click again to take your vote back.</div>
+          <div class="pstep">The notes with the most votes will become discussion topics.</div>
+        </div>
+      </div>
+    </div>
+
+    ${buildTimer(2)}
+
+    <div class="vote-status">
+      <div class="vote-tokens">
+        ${Array.from({length:sess.votesPerPerson},(_,i) =>
+          `<div class="vtoken${i<used?' used':''}"></div>`).join('')}
+      </div>
+      <div class="vote-count-label">
+        <span style="font-size:26px;font-weight:700;color:${left===0?'var(--g4)':'var(--rust)'}">${left}</span>
+        <span style="font-size:13px;color:var(--g4)"> / ${sess.votesPerPerson} votes left</span>
+      </div>
+    </div>
+
+    <div class="postit-grid" id="cards-grid">
+      ${cards.length === 0
+        ? '<div class="empty-state">No notes to vote on yet.</div>'
+        : cards.map(c => postItCard({
+            ...c,
+            showVote: true,
+            voted: !!(c.voters?.[me.uid]),
+            canVote: left > 0
+          })).join('')}
+    </div>
+  `);
+
+  bindTimer(2);
+  bindVoteButtons();
+}
+
+function bindVoteButtons() {
+  document.querySelectorAll('.postit-vote').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (btn.disabled) return;
-      const cid         = btn.getAttribute('data-cid');
-      const alreadyVoted = btn.getAttribute('data-voted') === '1';
-      const card        = sess.cards?.[cid];
-      const partData    = sess.participants?.[me.uid];
-      if (!card || !partData) return;
-
-      if (alreadyVoted) {
-        await update(ref(db, `${sessPath(sess.id)}/cards/${cid}`), {
-          votes: Math.max(0, (card.votes||0) - 1),
-          [`voters/${me.uid}`]: null
-        });
-        await update(ref(db, `${sessPath(sess.id)}/participants/${me.uid}`), {
-          votesUsed: Math.max(0, (partData.votesUsed||0) - 1)
-        });
+      const cid      = btn.getAttribute('data-cid');
+      const card     = sess.cards?.[cid];
+      const part     = sess.participants?.[me.uid];
+      const voted    = !!(card?.voters?.[me.uid]);
+      if (!card || !part) return;
+      if (voted) {
+        await update(ref(db, `${SP(sess.id)}/cards/${cid}`), {
+          votes: Math.max(0,(card.votes||0)-1), [`voters/${me.uid}`]:null });
+        await update(ref(db, `${SP(sess.id)}/participants/${me.uid}`),
+          { votesUsed: Math.max(0,(part.votesUsed||0)-1) });
       } else {
-        if ((partData.votesUsed||0) >= sess.votesPerPerson) { toast('No votes left'); return; }
-        await update(ref(db, `${sessPath(sess.id)}/cards/${cid}`), {
-          votes: (card.votes||0) + 1,
-          [`voters/${me.uid}`]: true
-        });
-        await update(ref(db, `${sessPath(sess.id)}/participants/${me.uid}`), {
-          votesUsed: (partData.votesUsed||0) + 1
-        });
+        if ((part.votesUsed||0) >= sess.votesPerPerson) { toast('No votes left'); return; }
+        await update(ref(db, `${SP(sess.id)}/cards/${cid}`), {
+          votes:(card.votes||0)+1, [`voters/${me.uid}`]:true });
+        await update(ref(db, `${SP(sess.id)}/participants/${me.uid}`),
+          { votesUsed:(part.votesUsed||0)+1 });
       }
     });
   });
 
-  if (me.isAdmin) {
-    document.getElementById('p2-next').addEventListener('click', async () => {
-      const n = parseInt(prompt(
-        `How many discussion rooms?\n\nParticipants: ${Object.keys(sess.participants||{}).length}\n` +
-        `Suggestion: ${Math.max(2, Math.ceil(Object.keys(sess.participants||{}).length/5))}\n\nEnter number:`,
-        Math.max(2, Math.ceil(Object.keys(sess.participants||{}).length/5))
-      ));
-      if (!n || n < 1) return;
-
-      const topCards = objToArr(sess.cards).sort((a,b) => (b.votes||0)-(a.votes||0)).slice(0,n);
-      const rooms = {};
-      topCards.forEach((c,i) => {
-        rooms[`room${i}`] = { id: `room${i}`, cardId: c.id, title: c.text, votes: c.votes||0, participants: {} };
-      });
-      await update(ref(db, sessPath(sess.id)), { rooms, phase: 3 });
-      toast(`${n} rooms created!`);
-    });
-  }
+  document.querySelectorAll('.postit-del').forEach(btn => btn.addEventListener('click', async () => {
+    const cid = btn.getAttribute('data-cid');
+    await update(ref(db, `${SP(sess.id)}/cards`), { [cid]: null });
+  }));
 }
 
-/* ══════════════════════════════════════════════════════
-   PHASE 3 — CHOOSE ROOM
-══════════════════════════════════════════════════════ */
-function p3() {
-  const rooms   = objToArr(sess.rooms);
-  const myRoom  = rooms.find(r => r.participants?.[me.uid]);
+/* ─────────────────────────────────────────────
+   PHASE 3 — DISCUSS
+───────────────────────────────────────────── */
+function pDiscuss() {
+  const rooms = arr(sess.rooms).sort((a,b) => (b.votes||0)-(a.votes||0));
 
-  const teamsBox = `<div class="teams-box">
-    <div class="teams-title">💬 Microsoft Teams — Breakout Rooms</div>
-    <div style="font-size:13px;color:var(--ink2);line-height:1.7">
-      Join the Teams breakout room with the <strong>same number</strong> as the room you pick here.<br>
-      Example: pick Room 2 here → join <strong>Breakout Room 2</strong> in Teams.
-    </div>
-  </div>`;
-
-  const info = infoBox('🚪','Your turn: Choose a discussion room',[
-    'Read the topic of each room below.',
-    'Click the room you want to discuss.',
-    '<strong>Go to the same-numbered Teams breakout room.</strong>',
-    'In Teams, agree on who will be the <strong>Scribe</strong> for your room.',
-    'When everyone has chosen, the facilitator starts the discussion phase.'
-  ]);
-
-  const adminCtrl = me.isAdmin
-    ? adminBanner('When everyone is in their rooms, click <strong>Start Discussion</strong>.') +
-      `<button id="p3-next" class="btn btn-rust" style="margin-bottom:18px">Start Discussion →</button>`
-    : waitingMsg('start discussion.');
-
-  const roomsHtml = rooms.map((room,i) => {
-    const isMine     = myRoom?.id === room.id;
-    const partNames  = Object.keys(room.participants||{}).map(uid => resolveParticipantName(uid));
-    const partsHtml  = partNames.length === 0
-      ? '<span style="font-size:12px;color:var(--ink4)">No one here yet</span>'
-      : partNames.map(n => `<span class="tag t-sky">${esc(n)}</span>`).join('');
-    return `<div class="rcard${isMine?' mine':''}" data-rid="${room.id}">
-      <div class="rh">
-        <div style="flex:1">
-          <div class="rnum">Room ${i+1}</div>
-          <div class="rtitle">${esc(room.title)}</div>
+  const roomCards = rooms.map((room,i) => {
+    const data    = sess.roomData?.[room.id] || {};
+    const acts    = arr(data.actions);
+    const hasRoot = data.rootCause?.trim();
+    return `
+      <div class="discuss-room" data-rid="${room.id}" data-idx="${i}">
+        <div class="discuss-room-header">
+          <div>
+            <div class="discuss-room-num">Room ${i+1} &nbsp;·&nbsp; <span class="tag t-rust">⬆ ${room.votes} votes</span></div>
+            <div class="discuss-room-title">${esc(room.title)}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            ${hasRoot ? '<span class="tag t-sage">✓ Root cause</span>' : '<span class="tag t-gray">No root cause</span>'}
+            ${acts.length ? `<span class="tag t-rust">${acts.length} action${acts.length>1?'s':''}</span>` : ''}
+            <button class="btn btn-sm btn-ink open-room" data-rid="${room.id}" data-idx="${i}">Open</button>
+          </div>
         </div>
-        <div class="rvotes">⬆ ${room.votes}</div>
-      </div>
-      <div class="rb">
-        <div style="font-size:12px;font-weight:600;color:var(--lav);margin-bottom:6px">💬 → Teams Breakout Room ${i+1}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:5px">${partsHtml}</div>
-        <div style="font-size:12px;color:var(--ink3)">${partNames.length} participant${partNames.length!==1?'s':''}
-          ${isMine?' &nbsp;·&nbsp; <strong style="color:var(--rust)">📍 You are here</strong>':''}
-        </div>
-        ${!isMine
-          ? '<div style="margin-top:8px;font-size:12px;color:var(--sky);font-weight:500">Click to join →</div>'
-          : '<div style="margin-top:8px;font-size:12px;color:var(--sage);font-weight:500">✓ Joined</div>'}
-      </div>
-    </div>`;
+        ${hasRoot ? `<div class="discuss-root-preview">${esc((data.rootCause||'').slice(0,140))}${data.rootCause.length>140?'…':''}</div>` : ''}
+        ${acts.length ? `<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">
+          ${acts.slice(0,3).map(a => `
+            <div class="action-row-preview">
+              <span style="color:var(--rust)">→</span>
+              <span style="flex:1">${esc(a.text||'')}</span>
+              ${a.assignee ? `<span class="tag t-gold">@${esc(a.assignee)}</span>` : '<span style="font-size:11px;color:var(--gold)">⚠ no assignee</span>'}
+              ${a.dueDate  ? `<span class="tag t-gray">${esc(a.dueDate)}</span>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+      </div>`;
   }).join('');
 
-  setArea(teamsBox + info + adminCtrl + buildTimerHTML(3) + `<div class="gauto">${roomsHtml}</div>`);
-  bindTimerControls(3);
-
-  document.querySelectorAll('.rcard').forEach(card => {
-    card.addEventListener('click', async () => {
-      const rid = card.getAttribute('data-rid');
-      // Remove uid from all rooms
-      const patch = {};
-      rooms.forEach(r => { patch[`rooms/${r.id}/participants/${me.uid}`] = null; });
-      // Add to selected room
-      patch[`rooms/${rid}/participants/${me.uid}`] = true;
-      await update(ref(db, sessPath(sess.id)), patch);
-      const idx = rooms.findIndex(r => r.id === rid);
-      toast(`Joined Room ${idx+1} → go to Teams Breakout Room ${idx+1}`);
-    });
-  });
-
-  if (me.isAdmin) {
-    document.getElementById('p3-next').addEventListener('click', async () => {
-      await update(ref(db, sessPath(sess.id)), { phase: 4 });
-    });
-  }
-}
-
-/* ══════════════════════════════════════════════════════
-   PHASE 4 — DISCUSS
-══════════════════════════════════════════════════════ */
-function p4() {
-  const rooms = objToArr(sess.rooms);
-
-  const teamsBox = `<div class="teams-box">
-    <div class="teams-title">💬 You should be in your Teams Breakout Room right now</div>
-    <div style="font-size:13px;color:var(--ink2);line-height:1.7">
-      The <strong>Scribe</strong> clicks their room card below and types the root cause and actions on behalf of the group.
-    </div>
-  </div>`;
-
-  const info = infoBox('💡','Your turn: Discuss, find root cause, define actions',[
-    'Discuss the room topic with your group in Teams.',
-    'Agree on <strong>root cause</strong>: ask "Why?" at least 5 times.',
-    'Define <strong>action items</strong>: what to do, who owns it, and by when.',
-    'The <strong>Scribe</strong> clicks their room card below to type everything in.',
-    'When all rooms are done, facilitator ends the session and generates the PDF.'
-  ]);
-
-  const adminCtrl = me.isAdmin
-    ? adminBanner('When all rooms have entered root causes and actions, click <strong>Finish Session</strong>.') +
-      `<button id="p4-next" class="btn btn-rust" style="margin-bottom:18px">Finish Session & Generate Report →</button>`
-    : waitingMsg('finish the session.');
-
-  const roomsHtml = rooms.map((room,i) => {
-    const data     = sess.roomData?.[room.id] || {};
-    const acts     = objToArr(data.actions);
-    const hasRoot  = data.rootCause?.trim();
-    const parts    = Object.keys(room.participants||{}).map(uid => resolveParticipantName(uid));
-    const partsHtml = parts.map(n => `<span class="tag t-sky">${esc(n)}</span>`).join('');
-    const actPrev  = acts.slice(0,3).map(a =>
-      `<div style="font-size:12px;padding:5px 9px;background:var(--rust-l);border-radius:6px;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        <span style="color:var(--rust)">→</span>
-        <span style="flex:1;color:var(--ink2)">${esc(a.text||'')}</span>
-        ${a.assignee ? `<span class="tag t-gold">@${esc(a.assignee)}</span>` : '<span style="font-size:11px;color:var(--gold)">⚠ no assignee</span>'}
-        ${a.dueDate  ? `<span class="tag t-gray">${esc(a.dueDate)}</span>`    : '<span style="font-size:11px;color:var(--ink4)">no date</span>'}
-      </div>`
-    ).join('');
-
-    return `<div class="card" style="cursor:pointer;border-left:4px solid var(--rust)" data-rid="${room.id}" data-idx="${i}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink4);margin-bottom:3px;font-family:var(--mono)">Room ${i+1} · ⬆ ${room.votes} votes</div>
-          <h3>${esc(room.title)}</h3>
-          <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">${partsHtml}</div>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${hasRoot ? '<span class="tag t-sage">✓ Root cause</span>' : '<span class="tag t-gray">⚠ No root cause</span>'}
-          ${acts.length ? `<span class="tag t-rust">${acts.length} action${acts.length>1?'s':''}</span>` : '<span class="tag t-gray">No actions</span>'}
+  setArea(`
+    <div class="phase-intro">
+      <div class="phase-intro-icon">💡</div>
+      <div>
+        <div class="phase-intro-title">Discuss, find root causes &amp; define actions</div>
+        <div class="phase-intro-steps">
+          <div class="pstep">Each room below is a discussion topic from the vote. Open your room to join the discussion.</div>
+          <div class="pstep">Your group discusses the topic — preferably in a Teams breakout room with the same number.</div>
+          <div class="pstep">One person (the <strong>Scribe</strong>) clicks <em>Open</em> and types the <strong>root cause</strong> and <strong>action items</strong> for the group.</div>
+          <div class="pstep">Each action needs: what to do, who is responsible, and by when.</div>
         </div>
       </div>
-      ${hasRoot ? `<div style="font-size:13px;padding:9px 11px;background:var(--sage-l);border-radius:7px;border-left:3px solid var(--sage);margin-bottom:8px;color:var(--ink2)">${esc((data.rootCause||'').substring(0,120))}${data.rootCause.length>120?'…':''}</div>` : ''}
-      ${actPrev}
-      <div style="margin-top:10px;font-size:12px;color:var(--sky);font-weight:600">👆 Scribe: click here to enter root cause &amp; actions</div>
-    </div>`;
-  }).join('');
+    </div>
 
-  setArea(teamsBox + info + adminCtrl + buildTimerHTML(4) + `<div style="display:grid;gap:14px">${roomsHtml}</div>`);
-  bindTimerControls(4);
+    ${buildTimer(3)}
 
-  document.querySelectorAll('[data-rid]').forEach(el => {
-    el.addEventListener('click', () => openRoomModal(el.getAttribute('data-rid'), parseInt(el.getAttribute('data-idx'))));
-  });
+    <div style="display:grid;gap:14px">
+      ${rooms.length === 0
+        ? '<div class="empty-state">No rooms created yet.</div>'
+        : roomCards}
+    </div>
+  `);
 
-  if (me.isAdmin) {
-    document.getElementById('p4-next').addEventListener('click', async () => {
-      await update(ref(db, sessPath(sess.id)), { phase: 5 });
-    });
-  }
+  bindTimer(3);
+
+  document.querySelectorAll('.open-room').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openDiscussModal(btn.getAttribute('data-rid'), parseInt(btn.getAttribute('data-idx')));
+  }));
+  document.querySelectorAll('.discuss-room').forEach(card => card.addEventListener('click', () => {
+    openDiscussModal(card.getAttribute('data-rid'), parseInt(card.getAttribute('data-idx')));
+  }));
 }
 
-/* ── ROOM MODAL ──────────────────────────────────── */
-function openRoomModal(rid, idx) {
-  activeRoom = rid;
-  const room = sess.rooms?.[rid] || {};
-  const data = sess.roomData?.[rid] || { rootCause: '', actions: {} };
+/* ── DISCUSS MODAL ── */
+function openDiscussModal(rid, idx) {
+  activeRid = rid;
+  const room = arr(sess.rooms).find(r => r.id === rid) || {};
+  const data = sess.roomData?.[rid] || {};
 
-  document.getElementById('m-lbl').textContent   = `Room ${idx+1} · ${room.votes||0} votes`;
-  document.getElementById('m-title').textContent = room.title || '';
-  document.getElementById('m-root').value        = data.rootCause || '';
-  document.getElementById('m-warnings').innerHTML = '';
-  renderModalActions(objToArr(data.actions));
-  document.getElementById('room-overlay').classList.add('on');
+  document.getElementById('dm-lbl').textContent   = `Room ${idx+1} · ⬆ ${room.votes||0} votes`;
+  document.getElementById('dm-title').textContent = room.title || '';
+  document.getElementById('dm-root').value        = data.rootCause || '';
+  document.getElementById('dm-warnings').innerHTML = '';
+  renderDiscussActions(arr(data.actions));
+  document.getElementById('discuss-modal').classList.add('on');
 }
 
-function closeRoomModal() {
-  document.getElementById('room-overlay').classList.remove('on');
-  activeRoom = null;
+function closeDiscussModal() {
+  document.getElementById('discuss-modal').classList.remove('on');
+  activeRid = null;
 }
 
-function renderModalActions(actions) {
-  const el = document.getElementById('m-actions');
+function renderDiscussActions(actions) {
+  const el = document.getElementById('dm-actions');
   if (!actions.length) {
-    el.innerHTML = '<div style="color:var(--ink4);font-size:13px;padding:6px 0">No actions yet. Click "+ Add Action" above.</div>';
+    el.innerHTML = '<div style="color:var(--g4);font-size:13px;padding:6px 0">No actions yet. Click "+ Add Action" above.</div>';
     return;
   }
   el.innerHTML = actions.map((a,i) => {
     const miss = !a.assignee?.trim() || !a.dueDate?.trim();
-    return `<div style="background:#fff;border:1px solid ${miss?'rgba(196,154,60,.4)':'var(--bdr)'};border-radius:var(--r);padding:12px 14px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ink3)">Action ${i+1}</span>
-        <button class="btn btn-ghost btn-sm rm-act" data-i="${i}" style="padding:3px 8px">Remove</button>
+    return `<div class="action-form-card" style="border-color:${miss?'rgba(196,154,60,.4)':'var(--bdr)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span class="lbl">Action ${i+1}</span>
+        <button class="btn btn-ghost btn-sm rm-act" data-i="${i}">Remove</button>
       </div>
-      <div class="fld" style="margin-bottom:8px">
-        <label class="lbl">What needs to be done?</label>
-        <input class="inp" value="${esc(a.text||'')}" placeholder="e.g. Create a definition of done document" data-i="${i}" data-f="text">
-      </div>
+      <div class="fld"><label class="lbl">What needs to be done?</label>
+        <input class="inp" value="${esc(a.text||'')}" placeholder="e.g. Set up a weekly demo calendar" data-i="${i}" data-f="text"></div>
       <div class="g2" style="gap:10px">
-        <div>
-          <label class="lbl">Assignee — who is responsible?</label>
-          <input class="inp" value="${esc(a.assignee||'')}" placeholder="Name (max 20 chars)" maxlength="20" data-i="${i}" data-f="assignee">
-          <div style="font-size:11px;color:var(--ink4);margin-top:2px">⚠ Confirm with the person before assigning</div>
-        </div>
-        <div>
-          <label class="lbl">Due Date</label>
-          <input class="inp" type="date" value="${esc(a.dueDate||'')}" data-i="${i}" data-f="dueDate">
-          <div style="font-size:11px;color:var(--ink4);margin-top:2px">Agree the date with the assignee</div>
-        </div>
+        <div><label class="lbl">Assignee <span style="color:var(--gold)">(max 20 chars — confirm first!)</span></label>
+          <input class="inp" value="${esc(a.assignee||'')}" placeholder="Person's name" maxlength="20" data-i="${i}" data-f="assignee"></div>
+        <div><label class="lbl">Due Date <span style="color:var(--ink3)">(agree with assignee)</span></label>
+          <input class="inp" type="date" value="${esc(a.dueDate||'')}" data-i="${i}" data-f="dueDate"></div>
       </div>
-      ${miss ? `<div style="margin-top:6px;font-size:12px;color:var(--gold)">⚠ ${[!a.assignee?.trim()?'No assignee set':null,!a.dueDate?.trim()?'No due date set':null].filter(Boolean).join(' · ')}</div>` : ''}
+      ${miss ? `<div style="font-size:12px;color:var(--gold);margin-top:4px">⚠ ${[!a.assignee?.trim()?'No assignee':null,!a.dueDate?.trim()?'No due date':null].filter(Boolean).join(' · ')}</div>` : ''}
     </div>`;
   }).join('');
 
   el.querySelectorAll('input[data-f]').forEach(inp => {
-    ['input','change'].forEach(ev => {
-      inp.addEventListener(ev, () => {
-        const i = parseInt(inp.getAttribute('data-i'));
-        const f = inp.getAttribute('data-f');
-        // Update local sess snapshot for immediate warning re-render
-        if (!sess.roomData) sess.roomData = {};
-        if (!sess.roomData[activeRoom]) sess.roomData[activeRoom] = { rootCause:'', actions:{} };
-        const acts = objToArr(sess.roomData[activeRoom].actions);
-        if (acts[i]) { acts[i][f] = inp.value; }
-        if (f === 'assignee' || f === 'dueDate') renderModalActions(acts);
-      });
-    });
+    ['input','change'].forEach(ev => inp.addEventListener(ev, () => {
+      const i = parseInt(inp.getAttribute('data-i'));
+      const f = inp.getAttribute('data-f');
+      if (!sess.roomData) sess.roomData = {};
+      if (!sess.roomData[activeRid]) sess.roomData[activeRid] = { rootCause:'', actions:{} };
+      const acts = arr(sess.roomData[activeRid].actions);
+      if (acts[i]) { acts[i][f] = inp.value; if (f==='assignee'||f==='dueDate') renderDiscussActions(acts); }
+    }));
   });
 
-  el.querySelectorAll('.rm-act').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const i   = parseInt(btn.getAttribute('data-i'));
-      const acts = objToArr(sess.roomData?.[activeRoom]?.actions || {});
-      acts.splice(i, 1);
-      const newActions = {};
-      acts.forEach((a,j) => { newActions[`act${j}`] = a; });
-      await update(ref(db, `${sessPath(sess.id)}/roomData/${activeRoom}`), { actions: newActions });
-      renderModalActions(acts);
-    });
-  });
+  el.querySelectorAll('.rm-act').forEach(btn => btn.addEventListener('click', async () => {
+    const i    = parseInt(btn.getAttribute('data-i'));
+    const acts = arr(sess.roomData?.[activeRid]?.actions || {});
+    acts.splice(i,1);
+    const obj = {}; acts.forEach((a,j) => obj[`act${j}`]=a);
+    await update(ref(db, `${SP(sess.id)}/roomData/${activeRid}`), { actions: obj });
+    renderDiscussActions(acts);
+  }));
 }
 
-/* ══════════════════════════════════════════════════════
-   PHASE 5 — REPORT
-══════════════════════════════════════════════════════ */
-function p5() {
-  const cards     = objToArr(sess.cards).sort((a,b) => (b.votes||0)-(a.votes||0));
-  const rooms     = objToArr(sess.rooms);
-  const parts     = objToArr(sess.participants);
-  const totalVotes = cards.reduce((t,c) => t+(c.votes||0), 0);
-  const totalAct  = rooms.reduce((t,r) => t + objToArr(sess.roomData?.[r.id]?.actions).length, 0);
+/* ─────────────────────────────────────────────
+   PHASE 4 — REPORT
+───────────────────────────────────────────── */
+function pReport() {
+  const cards  = arr(sess.cards).sort((a,b)=>(b.votes||0)-(a.votes||0));
+  const rooms  = arr(sess.rooms).sort((a,b)=>(b.votes||0)-(a.votes||0));
+  const parts  = arr(sess.participants);
+  const totalV = cards.reduce((t,c)=>t+(c.votes||0),0);
+  const totalA = rooms.reduce((t,r)=>t+arr(sess.roomData?.[r.id]?.actions).length,0);
 
-  const statsHtml = [
+  const stats = [
     ['Participants', parts.length, 'var(--sky)'],
     ['Cards', cards.length, 'var(--gold)'],
-    ['Votes', totalVotes, 'var(--rust)'],
+    ['Votes', totalV, 'var(--rust)'],
     ['Rooms', rooms.length, 'var(--lav)'],
-    ['Actions', totalAct, 'var(--sage)']
-  ].map(([label, val, color]) =>
-    `<div style="background:#fff;border:1px solid var(--bdr);border-radius:var(--r-lg);padding:14px;text-align:center;box-shadow:var(--sh)">
-      <div style="font-size:26px;font-family:var(--serif);font-weight:700;color:${color}">${val}</div>
-      <div style="font-size:12px;color:var(--ink3);margin-top:2px">${label}</div>
-    </div>`
-  ).join('');
-
-  const cardsHtml = cards.map((c,i) =>
-    `<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--cream);border-radius:7px;border:1px solid var(--bdr)">
-      <span style="font-family:var(--mono);font-size:11px;color:var(--ink4);width:18px;text-align:right">${i+1}</span>
-      <span style="flex:1;font-size:13px">${esc(c.text)}</span>
-      <span class="tag t-rust">⬆ ${c.votes||0}</span>
-      <span style="font-size:11px;color:var(--ink4)">${esc(c.author)}</span>
-    </div>`
-  ).join('');
-
-  const roomsHtml = rooms.map((room,i) => {
-    const data    = sess.roomData?.[room.id] || {};
-    const acts    = objToArr(data.actions);
-    const partNames = Object.keys(room.participants||{}).map(uid => resolveParticipantName(uid));
-    const actHtml = acts.length
-      ? acts.map((a,j) =>
-          `<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--rust-l);border-radius:7px;font-size:13px;flex-wrap:wrap">
-            <span style="color:var(--rust);font-weight:600">${j+1}.</span>
-            <span style="flex:1">${esc(a.text||'(no description)')}</span>
-            ${a.assignee ? `<span class="tag t-gold">@${esc(a.assignee)}</span>` : '<span style="font-size:11px;color:var(--gold)">⚠ no assignee</span>'}
-            ${a.dueDate  ? `<span class="tag t-gray">${esc(a.dueDate)}</span>`    : '<span style="font-size:11px;color:var(--ink4)">no date</span>'}
-          </div>`
-        ).join('')
-      : '<p style="font-size:13px;color:var(--ink4);padding:6px 0">No actions recorded.</p>';
-
-    return `<div class="card" style="margin-bottom:14px;border-left:4px solid var(--rust)">
-      <div style="margin-bottom:12px">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink4);margin-bottom:3px;font-family:var(--mono)">Room ${i+1} · ⬆ ${room.votes} votes</div>
-        <h3>${esc(room.title)}</h3>
-        <div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap">
-          ${partNames.map(n => `<span class="tag t-sky">${esc(n)}</span>`).join('')}
-        </div>
-      </div>
-      ${data.rootCause
-        ? `<div style="margin-bottom:12px"><label class="lbl">Root Cause</label>
-            <div style="padding:10px 13px;background:var(--sage-l);border-radius:7px;font-size:13px;color:var(--ink2);border-left:3px solid var(--sage)">${esc(data.rootCause)}</div>
-           </div>`
-        : '<div style="margin-bottom:12px;font-size:13px;color:var(--ink4)">⚠ No root cause entered.</div>'}
-      <label class="lbl">Action Items</label>
-      <div style="display:flex;flex-direction:column;gap:5px">${actHtml}</div>
-    </div>`;
-  }).join('');
+    ['Actions', totalA, 'var(--sage)']
+  ];
 
   setArea(`
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:22px;gap:14px;flex-wrap:wrap">
+    <div class="phase-intro">
+      <div class="phase-intro-icon">📄</div>
       <div>
-        <h2>Session Report</h2>
-        <p style="color:var(--ink3);margin-top:5px">${esc(sess.title)} — ${new Date(sess.createdAt).toLocaleDateString('en-GB')}</p>
+        <div class="phase-intro-title">Session complete — here's the summary</div>
+        <div class="phase-intro-steps">
+          <div class="pstep">Review all cards, root causes, and action items below.</div>
+          <div class="pstep">Download the PDF to share the report with your team.</div>
+        </div>
       </div>
-      <button id="btn-pdf" class="btn btn-ink">⬇ Download PDF Report</button>
     </div>
-    <div class="g3" style="margin-bottom:22px">${statsHtml}</div>
+
+    <div class="stats-row">
+      ${stats.map(([l,v,c]) => `<div class="stat-card"><div class="stat-val" style="color:${c}">${v}</div><div class="stat-lbl">${l}</div></div>`).join('')}
+    </div>
+
+    <div style="text-align:right;margin-bottom:20px">
+      <button id="dl-pdf" class="btn btn-ink">⬇ Download PDF</button>
+    </div>
+
     <div class="card" style="margin-bottom:22px">
-      <h3 style="margin-bottom:14px">All Cards (sorted by votes)</h3>
-      <div style="display:flex;flex-direction:column;gap:5px">${cardsHtml}</div>
+      <h3 style="margin-bottom:14px">All Notes (sorted by votes)</h3>
+      ${cards.map((c,i) => `
+        <div class="report-card-row ${i<rooms.length?'top':''}">
+          <span class="report-rank">${i+1}</span>
+          <span style="flex:1;font-size:13px">${esc(c.text)}</span>
+          <span class="tag t-rust">⬆ ${c.votes||0}</span>
+          <span style="font-size:11px;color:var(--g4)">${esc(c.author)}</span>
+        </div>`).join('')}
     </div>
-    ${roomsHtml}
+
+    ${rooms.map((room,i) => {
+      const data  = sess.roomData?.[room.id] || {};
+      const acts  = arr(data.actions);
+      const parts2 = Object.keys(room.participants||{}).map(u => sess.participants?.[u]?.name || u);
+      return `<div class="card" style="margin-bottom:14px;border-left:4px solid var(--rust)">
+        <div style="margin-bottom:12px">
+          <div class="room-num-label">Room ${i+1} · ⬆ ${room.votes} votes</div>
+          <h3>${esc(room.title)}</h3>
+          ${parts2.length ? `<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap">${parts2.map(n=>`<span class="tag t-sky">${esc(n)}</span>`).join('')}</div>` : ''}
+        </div>
+        ${data.rootCause ? `<div style="margin-bottom:12px"><label class="lbl">Root Cause</label>
+          <div class="root-cause-box">${esc(data.rootCause)}</div></div>`
+          : '<div style="margin-bottom:12px;font-size:13px;color:var(--g4)">⚠ No root cause entered.</div>'}
+        <label class="lbl">Actions</label>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          ${acts.length ? acts.map((a,j) => `
+            <div class="action-report-row">
+              <span style="color:var(--rust);font-weight:600">${j+1}.</span>
+              <span style="flex:1">${esc(a.text||'(no description)')}</span>
+              ${a.assignee ? `<span class="tag t-gold">@${esc(a.assignee)}</span>` : '<span style="font-size:11px;color:var(--gold)">⚠ no assignee</span>'}
+              ${a.dueDate  ? `<span class="tag t-gray">${esc(a.dueDate)}</span>`   : '<span style="font-size:11px;color:var(--g4)">no date</span>'}
+            </div>`).join('')
+          : '<p style="font-size:13px;color:var(--g4)">No actions recorded.</p>'}
+        </div>
+      </div>`;
+    }).join('')}
   `);
 
-  document.getElementById('btn-pdf').addEventListener('click', downloadPDF);
+  document.getElementById('dl-pdf').addEventListener('click', downloadPDF);
 }
 
-/* ══════════════════════════════════════════════════════
-   PDF  (jsPDF — loaded via CDN script tag below)
-══════════════════════════════════════════════════════ */
+/* ─────────────────────────────────────────────
+   PHASE NAVIGATION (admin only)
+───────────────────────────────────────────── */
+async function goPrev() {
+  if (!me.isAdmin || sess.phase <= 1) return;
+  if (!confirm(`Go back to "${PHASES[sess.phase-1]}"?`)) return;
+  await update(ref(db, SP(sess.id)), { phase: sess.phase - 1 });
+}
+
+async function goNext() {
+  if (!me.isAdmin) return;
+  if (sess.phase === 2) {
+    // Vote → Discuss: ask room count, create rooms from top cards
+    const n = parseInt(prompt(
+      `Voting is complete!\n\nHow many discussion rooms do you want?\n` +
+      `(Each room = one top-voted note)\n\nParticipants: ${arr(sess.participants).length}\n` +
+      `Suggestion: ${Math.max(2, Math.ceil(arr(sess.participants).length/5))}\n\nEnter number:`,
+      Math.max(2, Math.ceil(arr(sess.participants).length/5))
+    ));
+    if (!n || n < 1) return;
+    const topCards = arr(sess.cards).sort((a,b)=>(b.votes||0)-(a.votes||0)).slice(0,n);
+    const rooms = {};
+    topCards.forEach((c,i) => {
+      rooms[`room${i}`] = { id:`room${i}`, cardId:c.id, title:c.text, votes:c.votes||0, participants:{} };
+    });
+    await update(ref(db, SP(sess.id)), { rooms, phase: 3 });
+  } else if (sess.phase === 4) {
+    if (confirm('Mark this session as complete?')) {
+      await update(ref(db, SP(sess.id)), { closed: true });
+      toast('Session marked as complete');
+    }
+  } else {
+    if (sess.phase === 1 && arr(sess.cards).length < 1) { toast('Add at least one note first'); return; }
+    await update(ref(db, SP(sess.id)), { phase: sess.phase + 1 });
+  }
+}
+
+/* ─────────────────────────────────────────────
+   TIMER (per-phase, Firebase)
+───────────────────────────────────────────── */
+const TIMER_DEF = { 1:10, 2:8, 3:20, 4:0 };
+
+function buildTimer(phase) {
+  const def = TIMER_DEF[phase] || 10;
+  const ctrl = me.isAdmin ? `
+    <div class="timer-controls">
+      <input class="inp" id="tmr-min-${phase}" type="number" min="1" max="90" value="${def}"
+        style="width:65px;font-family:var(--mono);text-align:center;padding:6px 8px">
+      <span style="font-size:13px;color:var(--g3)">min</span>
+      <button class="btn btn-sage btn-sm" id="tmr-start-${phase}">▶ Start</button>
+      <button class="btn btn-ghost btn-sm" id="tmr-stop-${phase}">■ Stop</button>
+    </div>` : `<div style="font-size:12px;color:var(--g3)">Controlled by facilitator</div>`;
+  return `<div class="timer-wrap" id="timer-wrap-${phase}">
+    <div><div class="timer-disp" id="timer-disp-${phase}">--:--</div>
+    <div class="timer-lbl" id="timer-lbl-${phase}">Timer not started</div></div>
+    ${ctrl}
+  </div>`;
+}
+
+function bindTimer(phase) {
+  document.getElementById(`tmr-start-${phase}`)?.addEventListener('click', async () => {
+    const m = parseInt(document.getElementById(`tmr-min-${phase}`).value)||10;
+    await update(ref(db, `${SP(sess.id)}/timers/${phase}`),
+      { running:true, end:Date.now()+m*60000, total:m*60 });
+    toast(`Timer: ${m} minutes`);
+  });
+  document.getElementById(`tmr-stop-${phase}`)?.addEventListener('click', async () => {
+    await update(ref(db, `${SP(sess.id)}/timers/${phase}`),
+      { running:false, end:0, total:0 });
+  });
+  updateTimerOnly(phase, sess);
+}
+
+function updateTimerOnly(phase, s) {
+  const disp = document.getElementById(`timer-disp-${phase}`);
+  const wrap = document.getElementById(`timer-wrap-${phase}`);
+  const lbl  = document.getElementById(`timer-lbl-${phase}`);
+  if (!disp) return;
+  const t = s?.timers?.[phase];
+  if (!t?.running || !t.end) {
+    disp.textContent='--:--'; disp.className='timer-disp';
+    wrap.className='timer-wrap'; if(lbl) lbl.textContent='Timer not started'; return;
+  }
+  const rem = Math.max(0, Math.ceil((t.end-Date.now())/1000));
+  disp.textContent = `${String(Math.floor(rem/60)).padStart(2,'0')}:${String(rem%60).padStart(2,'0')}`;
+  const pct = t.total>0 ? rem/t.total : 1;
+  if(rem===0){disp.className='timer-disp danger';wrap.className='timer-wrap danger';if(lbl)lbl.textContent="⏰ Time's up!";}
+  else if(pct<=.25){disp.className='timer-disp danger';wrap.className='timer-wrap danger';if(lbl)lbl.textContent='⚡ Less than 25% left!';}
+  else if(pct<=.5){disp.className='timer-disp warn';wrap.className='timer-wrap warn';if(lbl)lbl.textContent='⏳ Half the time used';}
+  else{disp.className='timer-disp';wrap.className='timer-wrap';if(lbl)lbl.textContent='Timer running';}
+  if(rem>0) _rafIds[phase]=requestAnimationFrame(()=>updateTimerOnly(phase,sess));
+}
+
+/* ─────────────────────────────────────────────
+   PDF EXPORT
+───────────────────────────────────────────── */
 function downloadPDF() {
   const jsPDF = window.jspdf?.jsPDF;
-  if (!jsPDF) { toast('PDF library not loaded — try again'); return; }
-  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
-  const s = sess, pw = 190, ml = 10;
-  let y = 15;
-  const np = () => { doc.addPage(); y = 15; };
-  const cy = n => { if (y + n > 278) np(); };
+  if (!jsPDF) { toast('PDF library loading, try again in a moment'); return; }
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const s=sess, pw=190, ml=10; let y=15;
+  const np=()=>{doc.addPage();y=15;};
+  const cy=n=>{if(y+n>278)np();};
 
   // Cover
-  doc.setFillColor(26,23,20); doc.rect(0,0,210,297,'F');
-  doc.setTextColor(245,240,232); doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.setFillColor(26,23,20);doc.rect(0,0,210,297,'F');
+  doc.setTextColor(245,240,232);doc.setFontSize(9);doc.setFont('helvetica','normal');
   doc.text('LEAN CAFÉ RETROSPECTIVE REPORT',105,88,{align:'center'});
-  doc.setFontSize(20); doc.setFont('helvetica','bold');
-  const tl = doc.splitTextToSize(s.title,160); doc.text(tl,105,106,{align:'center'});
-  doc.setFontSize(11); doc.setFont('helvetica','normal'); doc.setTextColor(156,144,136);
-  doc.text(s.team,105,124+tl.length*3,{align:'center'});
-  doc.text(new Date(s.createdAt).toLocaleDateString('en-GB'),105,132+tl.length*3,{align:'center'});
-  const cards     = objToArr(s.cards);
-  const rooms     = objToArr(s.rooms);
-  const totalAct2 = rooms.reduce((t,r) => t + objToArr(s.roomData?.[r.id]?.actions).length, 0);
-  [['Participants',objToArr(s.participants).length],['Cards',cards.length],
-   ['Votes',cards.reduce((t,c)=>t+(c.votes||0),0)],['Rooms',rooms.length],['Actions',totalAct2]
-  ].forEach(([label,val],i) => {
-    const x = ml + i*37;
-    doc.setFillColor(40,37,33); doc.roundedRect(x,163,33,26,3,3,'F');
-    doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.setTextColor(245,240,232);
-    doc.text(String(val),x+16.5,176,{align:'center'});
-    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(156,144,136);
-    doc.text(label,x+16.5,184,{align:'center'});
+  doc.setFontSize(20);doc.setFont('helvetica','bold');
+  const tl=doc.splitTextToSize(s.title,160);doc.text(tl,105,106,{align:'center'});
+  doc.setFontSize(11);doc.setFont('helvetica','normal');doc.setTextColor(156,144,136);
+  doc.text(new Date(s.createdAt).toLocaleDateString('en-GB'),105,126+tl.length*3,{align:'center'});
+  const cards=arr(s.cards), rooms=arr(s.rooms);
+  const totalA=rooms.reduce((t,r)=>t+arr(s.roomData?.[r.id]?.actions).length,0);
+  [['Participants',arr(s.participants).length],['Cards',cards.length],
+   ['Votes',cards.reduce((t,c)=>t+(c.votes||0),0)],['Rooms',rooms.length],['Actions',totalA]
+  ].forEach(([l,v],i)=>{
+    const x=ml+i*37;doc.setFillColor(40,37,33);doc.roundedRect(x,163,33,26,3,3,'F');
+    doc.setFontSize(16);doc.setFont('helvetica','bold');doc.setTextColor(245,240,232);
+    doc.text(String(v),x+16.5,176,{align:'center'});
+    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(156,144,136);
+    doc.text(l,x+16.5,184,{align:'center'});
   });
-  doc.setFontSize(8); doc.setTextColor(70,63,58);
+  doc.setFontSize(8);doc.setTextColor(70,63,58);
   doc.text('hakanadiguzel.com · Lean Café Retrospective',105,286,{align:'center'});
 
-  // Cards page
-  doc.addPage(); y = 20;
-  doc.setFontSize(15); doc.setFont('helvetica','bold'); doc.setTextColor(26,23,20);
-  doc.text('All Cards',ml,y); y += 10;
-  cards.slice().sort((a,b)=>(b.votes||0)-(a.votes||0)).forEach((card,i) => {
-    cy(13);
-    const top = i < rooms.length;
+  // Cards
+  doc.addPage();y=20;
+  doc.setFontSize(15);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);
+  doc.text('All Notes',ml,y);y+=10;
+  cards.slice().sort((a,b)=>(b.votes||0)-(a.votes||0)).forEach((c,i)=>{
+    cy(13);const top=i<rooms.length;
     doc.setFillColor(top?240:245,top?220:240,top?213:232);
     doc.roundedRect(ml,y,pw,11,2,2,'F');
-    if (top) { doc.setFillColor(196,82,42); doc.rect(ml,y,2.5,11,'F'); }
-    doc.setFontSize(9); doc.setFont('helvetica',top?'bold':'normal'); doc.setTextColor(26,23,20);
-    doc.text(doc.splitTextToSize(card.text,pw-40)[0],ml+5,y+7);
-    doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(100,93,88);
-    doc.text('↑'+String(card.votes||0),ml+pw-3,y+7,{align:'right'}); y += 13;
+    if(top){doc.setFillColor(196,82,42);doc.rect(ml,y,2.5,11,'F');}
+    doc.setFontSize(9);doc.setFont('helvetica',top?'bold':'normal');doc.setTextColor(26,23,20);
+    doc.text(doc.splitTextToSize(c.text,pw-40)[0],ml+5,y+7);
+    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(100,93,88);
+    doc.text('↑'+String(c.votes||0),ml+pw-3,y+7,{align:'right'});y+=13;
   });
 
-  // Room pages
-  rooms.forEach((room,i) => {
-    doc.addPage(); y = 20;
-    doc.setFillColor(196,82,42); doc.rect(ml,y,pw,.5,'F'); y += 4;
-    doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(196,82,42);
-    doc.text(`ROOM ${i+1}  ·  ${room.votes} VOTES`,ml,y); y += 7;
-    doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.setTextColor(26,23,20);
-    const rl = doc.splitTextToSize(room.title,pw); doc.text(rl,ml,y); y += rl.length*7+4;
-    const data      = s.roomData?.[room.id] || {};
-    const acts      = objToArr(data.actions);
-    const partNames = Object.keys(room.participants||{}).map(uid => resolveParticipantName(uid));
-    if (partNames.length) {
-      doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(100,93,88);
-      doc.text('Participants: '+partNames.join(', '),ml,y); y += 6;
-    }
-    if (data.rootCause?.trim()) {
-      cy(18); y += 3;
-      const rcl = doc.splitTextToSize(data.rootCause,pw-12);
-      doc.setFillColor(216,234,223); doc.roundedRect(ml,y,pw,rcl.length*5+13,3,3,'F');
-      doc.setFillColor(74,124,89); doc.rect(ml,y,2.5,rcl.length*5+13,'F');
-      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(74,124,89);
+  // Rooms
+  rooms.sort((a,b)=>(b.votes||0)-(a.votes||0)).forEach((room,i)=>{
+    doc.addPage();y=20;
+    doc.setFillColor(196,82,42);doc.rect(ml,y,pw,.5,'F');y+=4;
+    doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(196,82,42);
+    doc.text(`ROOM ${i+1}  ·  ${room.votes} VOTES`,ml,y);y+=7;
+    doc.setFontSize(13);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);
+    const rl=doc.splitTextToSize(room.title,pw);doc.text(rl,ml,y);y+=rl.length*7+4;
+    const data=s.roomData?.[room.id]||{};
+    const acts=arr(data.actions);
+    if(data.rootCause?.trim()){
+      cy(18);y+=3;
+      const rcl=doc.splitTextToSize(data.rootCause,pw-12);
+      doc.setFillColor(216,234,223);doc.roundedRect(ml,y,pw,rcl.length*5+13,3,3,'F');
+      doc.setFillColor(74,124,89);doc.rect(ml,y,2.5,rcl.length*5+13,'F');
+      doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(74,124,89);
       doc.text('ROOT CAUSE',ml+5,y+6);
-      doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(26,23,20);
-      doc.text(rcl,ml+5,y+12); y += rcl.length*5+17;
+      doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(26,23,20);
+      doc.text(rcl,ml+5,y+12);y+=rcl.length*5+17;
     }
-    if (acts.length) {
-      cy(10); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(26,23,20);
-      doc.text('Action Items',ml,y); y += 8;
-      acts.forEach((a,j) => {
-        if (!a.text) return; cy(16);
-        const al = doc.splitTextToSize(a.text,pw-70);
-        const rh = Math.max(14,al.length*5+10);
-        doc.setFillColor(240,221,213); doc.roundedRect(ml,y,pw,rh,2,2,'F');
-        doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(196,82,42);
+    if(acts.length){
+      cy(10);doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(26,23,20);
+      doc.text('Action Items',ml,y);y+=8;
+      acts.forEach((a,j)=>{
+        if(!a.text)return;cy(16);
+        const al=doc.splitTextToSize(a.text,pw-70),rh=Math.max(14,al.length*5+10);
+        doc.setFillColor(240,221,213);doc.roundedRect(ml,y,pw,rh,2,2,'F');
+        doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(196,82,42);
         doc.text(String(j+1),ml+5,y+rh/2,{baseline:'middle'});
-        doc.setFont('helvetica','normal'); doc.setTextColor(26,23,20); doc.text(al,ml+11,y+7);
-        if (a.dueDate)  { doc.setFontSize(8); doc.setTextColor(100,93,88); doc.text(a.dueDate,ml+pw-3,y+rh-4,{align:'right'}); }
-        if (a.assignee) { doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(196,154,60); doc.text('@'+a.assignee,ml+pw-3,y+7,{align:'right'}); }
-        y += rh+5;
+        doc.setFont('helvetica','normal');doc.setTextColor(26,23,20);doc.text(al,ml+11,y+7);
+        if(a.dueDate){doc.setFontSize(8);doc.setTextColor(100,93,88);doc.text(a.dueDate,ml+pw-3,y+rh-4,{align:'right'});}
+        if(a.assignee){doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(196,154,60);doc.text('@'+a.assignee,ml+pw-3,y+7,{align:'right'});}
+        y+=rh+5;
       });
     }
   });
-
-  doc.save(`lean-cafe-${s.id}-${new Date().toISOString().split('T')[0]}.pdf`);
+  doc.save(`lean-cafe-${s.id}-${new Date().toISOString().slice(0,10)}.pdf`);
   toast('PDF downloaded ✓');
 }
 
-/* ══════════════════════════════════════════════════════
+/* ─────────────────────────────────────────────
    BOOT
-══════════════════════════════════════════════════════ */
+───────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
+  renderAuthBadges();
+  initHome();
+  initGuestCreate();
+  initAdminCreateSession();
+  initJoin();
 
-  // Char counters
-  const cc = (inp, cnt) => {
-    document.getElementById(inp).addEventListener('input', function() {
-      const n = this.value.length;
-      document.getElementById(cnt).textContent = `${n} / 15`;
-      document.getElementById(cnt).classList.toggle('warn', n >= 13);
-    });
-  };
-  cc('f-admin','f-admin-count');
-  cc('j-name','j-name-count');
+  // Admin panel back
+  document.getElementById('admin-back').addEventListener('click', () => show('s-home'));
 
-  // Home
-  document.getElementById('go-setup').addEventListener('click', () => {
-    if (!currentUser) { signInGoogle(); return; }
-    show('s-setup');
-  });
-
-  // Setup
-  document.getElementById('setup-back').addEventListener('click', () => show('s-home'));
-  document.getElementById('btn-create').addEventListener('click', createSession);
-
-  // Join
-  document.getElementById('join-back').addEventListener('click', () => show('s-home'));
-  document.getElementById('btn-join').addEventListener('click', joinSession);
-  document.getElementById('j-code').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('j-name').focus(); });
-  document.getElementById('j-name').addEventListener('keydown', e => { if(e.key==='Enter') joinSession(); });
-
-  // Link share
-  document.getElementById('btn-copy').addEventListener('click', () => {
+  // Link screen
+  document.getElementById('btn-copy-link').addEventListener('click', () => {
     const url = document.getElementById('lnk-url').textContent;
-    navigator.clipboard.writeText(url).then(() => toast('Link copied!')).catch(() => toast('Copy: '+url));
+    navigator.clipboard.writeText(url).then(()=>toast('Link copied!')).catch(()=>toast('Copy: '+url));
   });
-  document.getElementById('btn-go-admin').addEventListener('click', () => {
+  document.getElementById('lnk-go-admin').addEventListener('click', () => {
     if (sess) enterSession(sess.id);
   });
-
-  // Modal
-  document.getElementById('m-close').addEventListener('click', closeRoomModal);
-  document.getElementById('m-cancel').addEventListener('click', closeRoomModal);
-  document.getElementById('m-save').addEventListener('click', async () => {
-    if (!activeRoom) return;
-    const rootCause = document.getElementById('m-root').value;
-    const acts      = objToArr(sess.roomData?.[activeRoom]?.actions || {});
-    const warnings  = acts.filter(a => a.text && (!a.assignee || !a.dueDate));
-
-    if (warnings.length) {
-      document.getElementById('m-warnings').innerHTML =
-        `<div style="background:var(--gold-l);border:1.5px solid rgba(196,154,60,.4);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink2)">
-          ⚠ <strong>${warnings.length} action${warnings.length>1?'s':''} missing assignee or due date.</strong>
-          This is fine — but follow-through is much harder without them.<br>
-          <button id="save-anyway" class="btn btn-rust btn-sm" style="margin-top:8px">Save anyway</button>
-          <button id="go-back-fix" class="btn btn-ghost btn-sm" style="margin-top:8px">Go back and fix</button>
-        </div>`;
-      document.getElementById('save-anyway').addEventListener('click', () => doSaveRoom(rootCause));
-      document.getElementById('go-back-fix').addEventListener('click', () => {
-        document.getElementById('m-warnings').innerHTML = '';
-      });
-      return;
-    }
-    await doSaveRoom(rootCause);
+  document.getElementById('lnk-go-admin-panel').addEventListener('click', () => {
+    show('s-admin'); loadAdminSessions();
   });
 
-  document.getElementById('m-add-action').addEventListener('click', async () => {
-    if (!activeRoom) return;
-    const acts   = objToArr(sess.roomData?.[activeRoom]?.actions || {});
-    const newAct = { id: `act${acts.length}`, text: '', assignee: '', dueDate: '' };
-    acts.push(newAct);
-    const newActions = {};
-    acts.forEach((a,i) => { newActions[`act${i}`] = a; });
-    await update(ref(db, `${sessPath(sess.id)}/roomData/${activeRoom}`), { actions: newActions });
-    renderModalActions(acts);
+  // Session nav
+  document.getElementById('nav-prev').addEventListener('click', goPrev);
+  document.getElementById('nav-next').addEventListener('click', goNext);
+
+  // Discuss modal
+  document.getElementById('dm-close').addEventListener('click', closeDiscussModal);
+  document.getElementById('dm-cancel').addEventListener('click', closeDiscussModal);
+  document.getElementById('dm-add-action').addEventListener('click', async () => {
+    if (!activeRid) return;
+    if (!sess.roomData) sess.roomData={};
+    if (!sess.roomData[activeRid]) sess.roomData[activeRid]={rootCause:'',actions:{}};
+    const acts=arr(sess.roomData[activeRid].actions);
+    acts.push({id:`act${acts.length}`,text:'',assignee:'',dueDate:''});
+    const obj={}; acts.forEach((a,j)=>obj[`act${j}`]=a);
+    await update(ref(db,`${SP(sess.id)}/roomData/${activeRid}`),{actions:obj});
+    renderDiscussActions(acts);
+  });
+  document.getElementById('dm-save').addEventListener('click', async () => {
+    if (!activeRid) return;
+    const root = document.getElementById('dm-root').value;
+    const acts = arr(sess.roomData?.[activeRid]?.actions||{});
+    const warn = acts.filter(a=>a.text&&(!a.assignee||!a.dueDate));
+    if (warn.length) {
+      document.getElementById('dm-warnings').innerHTML =
+        `<div class="soft-warning">
+          ⚠ <strong>${warn.length} action${warn.length>1?'s':''} missing assignee or due date.</strong>
+          It's fine to save — but follow-through is much harder without them.<br>
+          <button id="dm-save-anyway" class="btn btn-rust btn-sm" style="margin-top:8px">Save anyway</button>
+          <button id="dm-fix" class="btn btn-ghost btn-sm" style="margin-top:8px">Go back &amp; fix</button>
+        </div>`;
+      document.getElementById('dm-save-anyway').addEventListener('click', ()=>doSaveRoom(root));
+      document.getElementById('dm-fix').addEventListener('click', ()=>document.getElementById('dm-warnings').innerHTML='');
+      return;
+    }
+    await doSaveRoom(root);
   });
 
   // Auto-join from URL
-  const urlCode = new URLSearchParams(location.search).get('session') || '';
-  if (urlCode) {
-    loadOnce(urlCode).then(s => {
-      if (s) { document.getElementById('j-code').value = urlCode; show('s-join'); }
+  const code = new URLSearchParams(location.search).get('session')||'';
+  if (code) {
+    loadOnce(code).then(s => {
+      if (s) {
+        document.getElementById('j-code').value = code;
+        document.getElementById('j-code').disabled = true;
+        show('s-join');
+      }
     });
   }
 });
 
 async function doSaveRoom(rootCause) {
-  const acts    = objToArr(sess.roomData?.[activeRoom]?.actions || {});
-  const newActs = {};
-  acts.forEach((a,i) => { newActs[`act${i}`] = a; });
-  await update(ref(db, `${sessPath(sess.id)}/roomData/${activeRoom}`), { rootCause, actions: newActs });
-  closeRoomModal();
+  const acts=arr(sess.roomData?.[activeRid]?.actions||{});
+  const obj={}; acts.forEach((a,j)=>obj[`act${j}`]=a);
+  await update(ref(db,`${SP(sess.id)}/roomData/${activeRid}`),{rootCause,actions:obj});
+  closeDiscussModal();
   toast('Saved ✓');
 }
 
 </script>
-
-<!-- jsPDF (must be classic script, not module) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<!-- Google Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --cream:#f5f0e8;--cream2:#ece5d8;--cream3:#e0d8c8;
-  --ink:#1a1714;--ink2:#3d3830;--ink3:#6b6358;--ink4:#9c9088;
+  --cream:#F4F4F0;--white:#FFFFFF;
+  --g1:#1a1714;--g2:#3d3830;--g3:#6b6358;--g4:#9c9088;
   --rust:#c4522a;--rust-l:#f0ddd5;
   --sage:#4a7c59;--sage-l:#d8eadf;
   --gold:#c49a3c;--gold-l:#f5ead0;
   --sky:#3a6b8a;--sky-l:#d0e4f0;
   --lav:#6b5b8a;--lav-l:#e4dcf0;
-  --bdr:rgba(26,23,20,.12);--bdr2:rgba(26,23,20,.22);
-  --sh:0 2px 12px rgba(26,23,20,.08);--sh-lg:0 8px 32px rgba(26,23,20,.14);
+  --bdr:rgba(26,23,20,.1);--bdr2:rgba(26,23,20,.2);
+  --sh:0 2px 8px rgba(26,23,20,.07);
+  --sh-lg:0 8px 28px rgba(26,23,20,.13);
   --r:10px;--r-lg:16px;
-  --serif:'Fraunces',Georgia,serif;
-  --sans:'DM Sans',system-ui,sans-serif;
-  --mono:'DM Mono','Courier New',monospace;
+  --font:'Nunito',sans-serif;--mono:'DM Mono',monospace;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--cream);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;min-height:100vh}
+body{background:var(--cream);color:var(--g1);font-family:var(--font);font-size:15px;line-height:1.6;min-height:100vh}
+
+/* ── SCREENS ── */
 .scr{display:none;min-height:100vh;flex-direction:column}.scr.on{display:flex}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--bdr);background:var(--cream);position:sticky;top:0;z-index:100}
-.logo{font-family:var(--serif);font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px;color:var(--ink)}
-.logo-icon{width:28px;height:28px;background:var(--ink);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px}
-.wrap{flex:1;padding:28px 24px;max-width:1080px;margin:0 auto;width:100%}
-h1{font-family:var(--serif);font-size:36px;font-weight:700;letter-spacing:-1px;line-height:1.1}
-h2{font-family:var(--serif);font-size:22px;font-weight:700;letter-spacing:-.4px}
-h3{font-family:var(--serif);font-size:17px;font-weight:700}
-.lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);display:block;margin-bottom:5px}
-.inp,.sel,.txa{background:#fff;border:1.5px solid var(--bdr2);border-radius:var(--r);color:var(--ink);font-family:var(--sans);font-size:14px;padding:9px 13px;width:100%;outline:none;transition:border-color .2s,box-shadow .2s}
-.inp:focus,.sel:focus,.txa:focus{border-color:var(--ink);box-shadow:0 0 0 3px rgba(26,23,20,.06)}
-.txa{resize:vertical;min-height:88px}.sel{cursor:pointer}.fld{margin-bottom:14px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 18px;border-radius:var(--r);border:none;font-family:var(--sans);font-size:14px;font-weight:500;cursor:pointer;transition:all .18s;white-space:nowrap;line-height:1}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--bdr);background:var(--white);position:sticky;top:0;z-index:200}
+.logo{font-family:var(--font);font-size:18px;font-weight:800;display:flex;align-items:center;gap:8px;color:var(--g1);letter-spacing:-.3px}
+.logo-mark{width:30px;height:30px;background:var(--g1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+
+/* ── LAYOUT ── */
+.wrap{flex:1;padding:28px 24px;max-width:1060px;margin:0 auto;width:100%}
+.wrap-sm{max-width:560px}
+h1{font-size:38px;font-weight:800;letter-spacing:-1.2px;line-height:1.1}
+h2{font-size:22px;font-weight:700;letter-spacing:-.4px}
+h3{font-size:17px;font-weight:700}
+.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--g3);display:block;margin-bottom:5px}
+
+/* ── FORMS ── */
+.inp,.sel,.txa{background:var(--white);border:1.5px solid var(--bdr2);border-radius:var(--r);color:var(--g1);font-family:var(--font);font-size:14px;padding:9px 13px;width:100%;outline:none;transition:border-color .2s,box-shadow .2s}
+.inp:focus,.sel:focus,.txa:focus{border-color:var(--g1);box-shadow:0 0 0 3px rgba(26,23,20,.06)}
+.txa{resize:vertical;min-height:80px}.sel{cursor:pointer}.fld{margin-bottom:14px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 18px;border-radius:var(--r);border:none;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer;transition:all .18s;white-space:nowrap;line-height:1}
 .btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;pointer-events:none}
-.btn-ink{background:var(--ink);color:var(--cream)}.btn-ink:hover{background:var(--ink2);transform:translateY(-1px);box-shadow:var(--sh)}
-.btn-rust{background:var(--rust);color:#fff}.btn-rust:hover{background:#b34820;transform:translateY(-1px);box-shadow:var(--sh)}
+.btn-ink{background:var(--g1);color:#fff}.btn-ink:hover{background:var(--g2);transform:translateY(-1px);box-shadow:var(--sh)}
+.btn-rust{background:var(--rust);color:#fff}.btn-rust:hover{background:#b34820;transform:translateY(-1px)}
 .btn-sage{background:var(--sage);color:#fff}.btn-sage:hover{background:#3d6b4a;transform:translateY(-1px)}
-.btn-ghost{background:transparent;color:var(--ink2);border:1.5px solid var(--bdr)}.btn-ghost:hover{background:var(--cream2)}
-.btn-out{background:#fff;color:var(--ink);border:1.5px solid var(--bdr2)}.btn-out:hover{background:var(--cream2);transform:translateY(-1px)}
-.btn-sm{padding:5px 11px;font-size:12px;border-radius:7px}.btn-lg{padding:13px 26px;font-size:16px;border-radius:13px}
-.card{background:#fff;border:1px solid var(--bdr);border-radius:var(--r-lg);padding:22px;box-shadow:var(--sh)}
+.btn-ghost{background:transparent;color:var(--g2);border:1.5px solid var(--bdr2)}.btn-ghost:hover{background:var(--cream)}
+.btn-out{background:var(--white);color:var(--g1);border:1.5px solid var(--bdr2)}.btn-out:hover{background:var(--cream);transform:translateY(-1px)}
+.btn-google{background:var(--white);color:var(--g1);border:1.5px solid var(--bdr2);font-weight:600}.btn-google:hover{background:var(--cream);box-shadow:var(--sh)}
+.btn-sm{padding:5px 11px;font-size:12px;border-radius:7px}
+.btn-lg{padding:14px 28px;font-size:16px;border-radius:13px}
+
+/* ── CARD ── */
+.card{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:22px;box-shadow:var(--sh)}
+
+/* ── GRIDS ── */
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.gauto{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
 hr{border:none;border-top:1px solid var(--bdr);margin:28px 0}
-.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500;border:1px solid}
+
+/* ── TAGS ── */
+.tag{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid}
 .t-rust{background:var(--rust-l);color:var(--rust);border-color:rgba(196,82,42,.3)}
 .t-sage{background:var(--sage-l);color:var(--sage);border-color:rgba(74,124,89,.3)}
 .t-gold{background:var(--gold-l);color:var(--gold);border-color:rgba(196,154,60,.3)}
 .t-sky{background:var(--sky-l);color:var(--sky);border-color:rgba(58,107,138,.3)}
-.t-gray{background:var(--cream2);color:var(--ink3);border-color:var(--bdr)}
-.sticky{padding:14px;border-radius:4px 12px 12px 4px;border-left:5px solid;background:#fff;box-shadow:var(--sh);transition:transform .18s,box-shadow .18s;min-height:90px;display:flex;flex-direction:column;gap:7px;word-break:break-word}
-.sticky:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
-.s0{border-color:var(--rust)}.s1{border-color:var(--sage)}.s2{border-color:var(--gold)}.s3{border-color:var(--sky)}.s4{border-color:var(--lav)}.s5{border-color:#b0785a}
-.sticky-voted{box-shadow:0 0 0 3px rgba(74,124,89,.35),var(--sh)}
-.vbtn{background:none;border:1.5px solid var(--bdr2);border-radius:20px;padding:3px 9px 3px 6px;font-size:12px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:var(--ink2);transition:all .18s;font-family:var(--sans)}
-.vbtn:hover:not(:disabled){background:var(--sage-l);border-color:var(--sage);color:var(--sage)}
-.vbtn.voted{background:var(--sage-l);border-color:var(--sage);color:var(--sage)}
-.vbtn:disabled{opacity:.35;cursor:not-allowed}
-.step-bar{display:flex;align-items:center;padding:13px 24px 0;border-bottom:1px solid var(--bdr);overflow-x:auto;gap:0}
-.step{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink4);white-space:nowrap}
-.step.on{color:var(--ink);font-weight:500}.step.done{color:var(--sage)}
-.step-c{width:26px;height:26px;border-radius:50%;border:2px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--mono);flex-shrink:0;background:#fff;color:var(--ink3)}
-.step.on .step-c{background:var(--ink);border-color:var(--ink);color:var(--cream)}
-.step.done .step-c{background:var(--sage);border-color:var(--sage);color:#fff}
-.step-line{flex:1;min-width:14px;height:1px;background:var(--bdr)}
-.rcard{background:#fff;border:1px solid var(--bdr);border-radius:var(--r-lg);overflow:hidden;transition:transform .2s,box-shadow .2s;cursor:pointer}
-.rcard:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}.rcard.mine{border:2.5px solid var(--rust)}
-.rh{padding:14px 18px;border-bottom:1px solid var(--bdr);display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.rb{padding:12px 18px}
-.rnum{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink4);margin-bottom:3px;font-family:var(--mono)}
-.rtitle{font-family:var(--serif);font-size:15px;font-weight:700;line-height:1.35}
-.rvotes{font-family:var(--mono);font-size:12px;color:var(--ink3);background:var(--cream2);padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+.t-gray{background:var(--cream);color:var(--g3);border-color:var(--bdr)}
+
+/* ══ POST-IT NOTES ══ */
+.postit-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:18px;
+  margin-top:20px;
+}
+.postit{
+  border-radius:2px 16px 16px 2px;
+  padding:16px 16px 12px;
+  box-shadow:3px 4px 14px rgba(0,0,0,.13), 0 1px 3px rgba(0,0,0,.08);
+  min-height:160px;
+  display:flex;flex-direction:column;gap:8px;
+  cursor:default;
+  transition:transform .2s, box-shadow .2s;
+  position:relative;
+  word-break:break-word;
+}
+.postit:hover{transform:translateY(-4px) rotate(.4deg);box-shadow:4px 8px 20px rgba(0,0,0,.18);}
+.postit-author{
+  font-size:11px;font-weight:700;letter-spacing:.8px;
+  text-transform:uppercase;color:rgba(0,0,0,.45);
+  margin-bottom:2px;
+}
+.postit-text{
+  font-size:16px;font-weight:600;line-height:1.45;
+  color:rgba(0,0,0,.75);flex:1;
+}
+.postit-footer{
+  display:flex;align-items:center;gap:8px;
+  border-top:1px solid rgba(0,0,0,.1);
+  padding-top:8px;margin-top:4px;
+}
+.postit-time{font-size:12px;color:rgba(0,0,0,.4);flex:1}
+.postit-vote{
+  background:none;border:1.5px solid rgba(0,0,0,.2);border-radius:20px;
+  padding:3px 10px;font-size:13px;font-weight:700;cursor:pointer;
+  color:rgba(0,0,0,.5);transition:all .15s;font-family:var(--font);
+  display:inline-flex;align-items:center;gap:4px;
+}
+.postit-vote:hover:not(:disabled){background:rgba(0,0,0,.1);border-color:rgba(0,0,0,.3);}
+.postit-vote.voted{background:var(--sage);border-color:var(--sage);color:white;}
+.postit-vote:disabled{opacity:.35;cursor:not-allowed}
+.postit-vcount{font-size:13px;font-weight:700;color:rgba(0,0,0,.35)}
+.postit-del{
+  background:none;border:none;cursor:pointer;
+  font-size:14px;color:rgba(0,0,0,.3);
+  padding:2px 4px;border-radius:4px;
+  transition:all .15s;line-height:1;
+}
+.postit-del:hover{color:var(--rust);background:var(--rust-l);}
+
+/* ══ WRITE BAR ══ */
+.write-bar{display:flex;gap:10px;align-items:flex-start;margin-bottom:4px}
+.postit-input{flex:1;border:2px solid var(--bdr2);border-radius:var(--r);padding:10px 14px;font-family:var(--font);font-size:14px;font-weight:600;resize:vertical;outline:none;background:var(--white);transition:border-color .2s}
+.postit-input:focus{border-color:var(--g1);box-shadow:0 0 0 3px rgba(26,23,20,.05)}
+
+/* ══ STEP BAR ══ */
+.step-bar{display:flex;align-items:center;padding:12px 24px 0;border-bottom:1px solid var(--bdr);overflow-x:auto;gap:0;background:var(--white)}
+.step{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--g4);white-space:nowrap;font-weight:600}
+.step.on{color:var(--g1)}.step.done{color:var(--sage)}
+.step-c{width:26px;height:26px;border-radius:50%;border:2px solid var(--bdr2);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--mono);flex-shrink:0;background:var(--white);color:var(--g3)}
+.step.on .step-c{background:var(--g1);border-color:var(--g1);color:white}
+.step.done .step-c{background:var(--sage);border-color:var(--sage);color:white}
+.step-line{flex:1;min-width:12px;height:1px;background:var(--bdr)}
+
+/* ══ PHASE INTRO ══ */
+.phase-intro{display:flex;gap:16px;align-items:flex-start;background:var(--sky-l);border:1.5px solid rgba(58,107,138,.25);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:20px}
+.phase-intro-icon{font-size:28px;flex-shrink:0;line-height:1}
+.phase-intro-title{font-size:16px;font-weight:700;color:var(--sky);margin-bottom:8px}
+.phase-intro-steps{display:flex;flex-direction:column;gap:5px}
+.pstep{font-size:13px;color:var(--g2);display:flex;align-items:flex-start;gap:7px}
+.pstep::before{content:'→';color:var(--sky);font-weight:700;flex-shrink:0}
+
+/* ══ VOTE STATUS ══ */
+.vote-status{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:14px 20px;margin-bottom:18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;box-shadow:var(--sh)}
+.vote-tokens{display:flex;gap:5px;flex-wrap:wrap}
+.vtoken{width:18px;height:18px;border-radius:50%;background:var(--rust);opacity:.2;transition:opacity .2s}
+.vtoken.used{opacity:1}
+
+/* ══ TIMER ══ */
+.timer-wrap{background:var(--white);border:1.5px solid var(--bdr);border-radius:var(--r-lg);padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;box-shadow:var(--sh);transition:border-color .4s,background .4s}
+.timer-wrap.warn{border-color:rgba(196,154,60,.5);background:var(--gold-l)}
+.timer-wrap.danger{border-color:rgba(196,82,42,.5);background:var(--rust-l)}
+.timer-disp{font-family:var(--mono);font-size:34px;font-weight:400;letter-spacing:-1px;color:var(--g1);min-width:95px;text-align:center;transition:font-size .3s,color .3s,font-weight .3s}
+.timer-disp.warn{color:var(--gold);font-size:40px;font-weight:500}
+.timer-disp.danger{color:var(--rust);font-size:48px;font-weight:700;animation:tpulse 1s ease-in-out infinite}
+@keyframes tpulse{0%,100%{opacity:1}50%{opacity:.5}}
+.timer-lbl{font-size:11px;color:var(--g3);margin-top:3px;text-align:center}
+.timer-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ══ DISCUSS ROOMS ══ */
+.discuss-room{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:18px 20px;cursor:pointer;transition:transform .2s,box-shadow .2s}
+.discuss-room:hover{transform:translateY(-2px);box-shadow:var(--sh-lg)}
+.discuss-room-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.discuss-room-num{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--g4);margin-bottom:3px;font-family:var(--mono);font-weight:700}
+.discuss-room-title{font-size:17px;font-weight:700;line-height:1.35}
+.discuss-root-preview{font-size:13px;padding:9px 12px;background:var(--sage-l);border-radius:8px;border-left:3px solid var(--sage);color:var(--g2);margin-bottom:6px}
+.action-row-preview{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 8px;background:var(--rust-l);border-radius:6px;flex-wrap:wrap}
+
+/* ══ DISCUSS MODAL ══ */
 .overlay{position:fixed;inset:0;background:rgba(26,23,20,.5);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
 .overlay.on{display:flex}
 .modal{background:var(--cream);border-radius:var(--r-lg);padding:26px;max-width:680px;width:100%;box-shadow:var(--sh-lg);border:1px solid var(--bdr);max-height:90vh;overflow-y:auto}
-.lbox{background:var(--cream2);border:1.5px solid var(--bdr2);border-radius:var(--r);padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--sky);word-break:break-all;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.token{width:16px;height:16px;border-radius:50%;background:var(--rust);opacity:.2;display:inline-block}
-.token.used{opacity:1}
-.pbadge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:4px 11px;border-radius:20px;border:1.5px solid var(--bdr2);background:var(--cream2);font-family:var(--mono);color:var(--ink2)}
-.pdot{width:7px;height:7px;border-radius:50%;background:var(--rust);display:inline-block}
-.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:var(--cream);padding:11px 18px;border-radius:var(--r);font-size:13px;z-index:9000;display:none;box-shadow:var(--sh-lg);max-width:320px}
+.action-form-card{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r);padding:12px 14px;margin-bottom:8px}
+.soft-warning{background:var(--gold-l);border:1.5px solid rgba(196,154,60,.4);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--g2)}
+
+/* ══ STATS ══ */
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px}
+.stat-card{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:14px;text-align:center;box-shadow:var(--sh)}
+.stat-val{font-size:26px;font-weight:800;letter-spacing:-1px}
+.stat-lbl{font-size:11px;color:var(--g3);margin-top:2px;font-weight:600}
+
+/* ══ REPORT ROWS ══ */
+.report-card-row{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--cream);border-radius:7px;border:1px solid var(--bdr);margin-bottom:5px}
+.report-card-row.top{background:var(--rust-l);border-color:rgba(196,82,42,.2)}
+.report-rank{font-family:var(--mono);font-size:11px;color:var(--g4);width:18px;text-align:right}
+.action-report-row{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--rust-l);border-radius:7px;font-size:13px;flex-wrap:wrap;margin-bottom:5px}
+.root-cause-box{padding:10px 13px;background:var(--sage-l);border-radius:7px;font-size:13px;color:var(--g2);border-left:3px solid var(--sage)}
+.room-num-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--g4);margin-bottom:3px;font-family:var(--mono);font-weight:700}
+
+/* ══ ADMIN PANEL ══ */
+.admin-sess-card{background:var(--white);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;box-shadow:var(--sh)}
+.admin-sess-title{font-size:15px;font-weight:700;margin-bottom:3px}
+.admin-sess-meta{font-size:12px;color:var(--g3)}
+.admin-sess-code{font-family:var(--mono);font-size:11px;color:var(--g4);margin-top:2px;letter-spacing:1px}
+.admin-sess-actions{display:flex;gap:7px;flex-shrink:0}
+#admin-sessions-list{display:flex;flex-direction:column;gap:10px}
+
+/* ══ ADMIN CREATE MODAL ══ */
+#admin-create-modal{z-index:600}
+
+/* ══ HOME ══ */
+.how-step{display:flex;align-items:flex-start;gap:14px;padding:14px 0;border-bottom:1px solid var(--bdr)}
+.how-step:last-child{border-bottom:none}
+.how-num{width:34px;height:34px;border-radius:50%;background:var(--g1);color:white;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.how-title{font-size:15px;font-weight:700;margin-bottom:2px}
+.how-desc{font-size:13px;color:var(--g3);line-height:1.6}
+
+/* ══ LINK SCREEN ══ */
+.lbox{background:var(--cream);border:1.5px solid var(--bdr2);border-radius:var(--r);padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--sky);word-break:break-all;display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+/* ══ EMPTY ══ */
+.empty-state{text-align:center;padding:40px 20px;color:var(--g4);font-size:14px;font-weight:600}
+
+/* ══ TOAST ══ */
+.toast{position:fixed;bottom:22px;right:22px;background:var(--g1);color:white;padding:11px 18px;border-radius:var(--r);font-size:13px;font-weight:600;z-index:9000;display:none;box-shadow:var(--sh-lg);max-width:320px}
 .toast.on{display:block;animation:fadeup .25s ease}
 @keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.infobox{background:var(--sky-l);border:1.5px solid rgba(58,107,138,.3);border-radius:var(--r-lg);padding:18px 20px;margin-bottom:20px}
-.infobox-title{font-weight:600;font-size:15px;color:var(--sky);margin-bottom:6px;display:flex;align-items:center;gap:7px}
-.infobox-steps{margin-top:8px;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:5px}
-.infobox-steps li{font-size:13px;color:var(--ink2);display:flex;align-items:flex-start;gap:8px}
-.infobox-steps li::before{content:'→';color:var(--sky);font-weight:600;flex-shrink:0}
-.teams-box{background:var(--lav-l);border:1.5px solid rgba(107,91,138,.3);border-radius:var(--r-lg);padding:16px 20px;margin-bottom:20px}
-.teams-title{font-weight:600;font-size:14px;color:var(--lav);margin-bottom:5px;display:flex;align-items:center;gap:7px}
-.admin-banner{background:var(--rust-l);border:1.5px solid rgba(196,82,42,.3);border-radius:var(--r);padding:12px 16px;font-size:13px;color:var(--rust);font-weight:500;margin-bottom:14px}
-.waiting-msg{background:var(--cream2);border-radius:var(--r);padding:10px 14px;font-size:13px;color:var(--ink3);margin-bottom:14px}
-.char-count{font-size:11px;color:var(--ink4);text-align:right;margin-top:3px}
-.char-count.warn{color:var(--rust);font-weight:500}
-.how-step{display:flex;align-items:flex-start;gap:16px;padding:16px 0;border-bottom:1px solid var(--bdr)}
-.how-step:last-child{border-bottom:none}
-.how-num{width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--cream);font-family:var(--serif);font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
-.how-title{font-family:var(--serif);font-size:16px;font-weight:600;margin-bottom:3px}
-.how-desc{font-size:13px;color:var(--ink3);line-height:1.65}
-/* TIMER */
-.timer-wrap{background:#fff;border:1.5px solid var(--bdr);border-radius:var(--r-lg);padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;box-shadow:var(--sh);transition:border-color .4s,background .4s}
-.timer-wrap.warn{border-color:rgba(196,154,60,.5);background:var(--gold-l)}
-.timer-wrap.danger{border-color:rgba(196,82,42,.5);background:var(--rust-l)}
-.timer-display{font-family:var(--mono);font-size:36px;font-weight:400;letter-spacing:-1px;color:var(--ink);transition:font-size .3s,color .3s,font-weight .3s;min-width:100px;text-align:center}
-.timer-display.warn{color:var(--gold);font-size:42px;font-weight:500}
-.timer-display.danger{color:var(--rust);font-size:50px;font-weight:700;animation:tpulse 1s ease-in-out infinite}
-@keyframes tpulse{0%,100%{opacity:1}50%{opacity:.55}}
-.timer-label{font-size:11px;color:var(--ink3);margin-top:3px;text-align:center}
-.timer-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}.wrap{padding:18px 14px}h1{font-size:26px}.timer-display{font-size:26px}.timer-display.warn{font-size:32px}.timer-display.danger{font-size:38px}}
+
+/* ══ PHASE BADGE ══ */
+.pbadge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:20px;border:1.5px solid var(--bdr2);background:var(--cream);font-family:var(--mono);color:var(--g2)}
+.pdot{width:7px;height:7px;border-radius:50%;background:var(--rust);display:inline-block}
+
+/* ══ CHAR COUNT ══ */
+.char-count{font-size:11px;color:var(--g4);text-align:right;margin-top:3px}
+.char-count.warn{color:var(--rust);font-weight:700}
+
+@media(max-width:700px){
+  .g2,.g3,.stats-row{grid-template-columns:1fr}
+  .wrap{padding:18px 14px}
+  h1{font-size:28px}
+  .postit-grid{grid-template-columns:1fr 1fr}
+  .timer-disp{font-size:26px}.timer-disp.warn{font-size:32px}.timer-disp.danger{font-size:38px}
+}
 </style>
 </head>
 <body>
 
-<!-- HOME -->
+<!-- ══════════ HOME ══════════ -->
 <div id="s-home" class="scr on">
-  <div style="max-width:760px;margin:0 auto;padding:48px 24px;width:100%">
-    <div style="text-align:center;margin-bottom:48px">
-      <div style="font-size:54px;margin-bottom:16px">☕</div>
+  <div style="max-width:740px;margin:0 auto;padding:48px 24px;width:100%">
+    <div style="text-align:center;margin-bottom:44px">
+      <div style="font-size:56px;margin-bottom:14px">☕</div>
       <h1 style="margin-bottom:10px">Lean Café<br>Retrospective</h1>
-      <p style="color:var(--ink3);font-size:16px;line-height:1.75;margin-bottom:28px;max-width:480px;margin-left:auto;margin-right:auto">
-        A democratic retrospective tool for large groups.<br>Cards → Votes → Rooms → Actions → PDF Report.
+      <p style="color:var(--g3);font-size:16px;line-height:1.75;margin-bottom:30px;max-width:460px;margin-left:auto;margin-right:auto">
+        A democratic retrospective for large groups.<br>Notes → Votes → Discussion → Actions → PDF.
       </p>
-      <button id="go-setup" class="btn btn-ink btn-lg" style="font-size:17px;padding:15px 32px">
-        ☕ Start a Session as Facilitator
-      </button>
-      <div style="margin-top:12px;font-size:13px;color:var(--ink4)">Sign in with Google required · Participants join via link, no account needed</div>
-      <div id="auth-badge" style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px"></div>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button id="home-guest-btn" class="btn btn-ink btn-lg">☕ Start a Quick Session</button>
+        <button id="home-admin-btn" class="btn btn-out btn-lg">🔐 Admin Panel</button>
+      </div>
+      <div style="margin-top:14px;font-size:13px;color:var(--g4)">
+        Quick Session needs no login · Admin Panel requires Google Sign-In
+      </div>
+      <div id="auth-home" style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px"></div>
     </div>
     <hr>
-    <div style="margin-bottom:48px">
+    <div style="margin-bottom:44px">
       <h2 style="margin-bottom:4px">How it works</h2>
-      <p style="color:var(--ink3);font-size:13px;margin-bottom:24px">A complete Lean Café retrospective in 5 phases</p>
-      <div class="how-step"><div class="how-num">1</div><div><div class="how-title">✍️ Write Cards</div><div class="how-desc">Everyone writes cards about what they want to discuss — one topic per card. All cards are visible to the whole group. The facilitator sets a timer. When the timer ends, the facilitator opens voting.</div></div></div>
-      <div class="how-step"><div class="how-num">2</div><div><div class="how-title">🗳️ Vote</div><div class="how-desc">Everyone gets a fixed number of votes. Vote for the cards you most want to discuss. You can spread votes or stack them. When voting closes, the top cards become discussion rooms.</div></div></div>
-      <div class="how-step"><div class="how-num">3</div><div><div class="how-title">🚪 Choose a Room</div><div class="how-desc">Each top-voted card becomes a room. Participants choose which room to join. The facilitator creates matching breakout rooms in Microsoft Teams — join the same-numbered room in Teams too.</div></div></div>
-      <div class="how-step"><div class="how-num">4</div><div><div class="how-title">💡 Discuss</div><div class="how-desc">Groups discuss their topic in the Teams breakout room. One person (the Scribe) enters the root cause and action items. Each action needs a description, an assignee (max 20 chars), and a due date.</div></div></div>
-      <div class="how-step"><div class="how-num">5</div><div><div class="how-title">📄 Report</div><div class="how-desc">When all rooms are done, the facilitator ends the session. A full PDF report is generated with all cards, root causes, and action items.</div></div></div>
+      <p style="color:var(--g3);font-size:13px;margin-bottom:20px">Four simple phases, everyone participates</p>
+      <div class="how-step"><div class="how-num">1</div><div><div class="how-title">✍️ Write Notes</div><div class="how-desc">Everyone writes sticky notes about what they want to discuss — one topic per note. All notes appear on screen in real time for everyone to see.</div></div></div>
+      <div class="how-step"><div class="how-num">2</div><div><div class="how-title">🗳️ Vote</div><div class="how-desc">Each person gets a set number of votes. Vote for the notes that matter most to you. The top-voted notes become discussion rooms.</div></div></div>
+      <div class="how-step"><div class="how-num">3</div><div><div class="how-title">💡 Discuss</div><div class="how-desc">The facilitator creates discussion rooms from the top-voted notes. Groups discuss in parallel (e.g. in Teams breakout rooms). One person per group — the Scribe — enters the root cause and action items.</div></div></div>
+      <div class="how-step"><div class="how-num">4</div><div><div class="how-title">📄 Report</div><div class="how-desc">When all groups are done, the facilitator ends the session. A full summary with all notes and action items can be downloaded as a PDF.</div></div></div>
     </div>
     <hr>
-    <div style="text-align:center;font-size:13px;color:var(--ink4)">
-      Built by <a href="https://hakanadiguzel.com" target="_blank" style="color:var(--ink2);font-weight:500;text-decoration:none;border-bottom:1px solid var(--bdr2)">Hakan Adıgüzel</a>
+    <div style="text-align:center;font-size:13px;color:var(--g4)">
+      Built by <a href="https://hakanadiguzel.com" target="_blank" style="color:var(--g2);font-weight:700;text-decoration:none;border-bottom:1px solid var(--bdr2)">Hakan Adıgüzel</a>
       &nbsp;·&nbsp; Agile Leader &amp; SAFe Coach
     </div>
   </div>
 </div>
 
-<!-- SETUP -->
-<div id="s-setup" class="scr">
+<!-- ══════════ GUEST CREATE ══════════ -->
+<div id="s-guest-create" class="scr">
   <div class="topbar">
-    <div class="logo"><div class="logo-icon">☕</div>Lean Café</div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <div id="auth-badge-2" style="display:flex;align-items:center;gap:8px"></div>
-      <button id="setup-back" class="btn btn-ghost btn-sm">← Back</button>
-    </div>
+    <div class="logo"><div class="logo-mark">☕</div>Lean Café</div>
+    <button id="guest-create-back" class="btn btn-ghost btn-sm">← Back</button>
   </div>
-  <div class="wrap" style="max-width:560px">
-    <div style="margin-bottom:22px"><h2>Create a New Session</h2><p style="color:var(--ink3);margin-top:5px">Fill in the details. You will get a shareable link for participants.</p></div>
+  <div class="wrap wrap-sm">
+    <div style="margin-bottom:22px"><h2>Quick Session</h2><p style="color:var(--g3);margin-top:5px">No login needed. Create a session and share the link.</p></div>
     <div class="card">
-      <div class="fld"><label class="lbl">Session Title</label><input class="inp" id="f-title" placeholder="e.g. Q2 Sprint 8 Retrospective"></div>
-      <div class="fld"><label class="lbl">Team Name</label><input class="inp" id="f-team" placeholder="e.g. Platform Team"></div>
+      <div class="fld"><label class="lbl">Session Title</label><input class="inp" id="gc-title" placeholder="e.g. Q2 Sprint 8 Retrospective"></div>
       <div class="g2">
-        <div class="fld"><label class="lbl">Votes per Person</label><input class="inp" id="f-votes" type="number" value="5" min="1" max="20"></div>
+        <div class="fld"><label class="lbl">Votes per Person</label><input class="inp" id="gc-votes" type="number" value="3" min="1" max="20"></div>
         <div class="fld">
-          <label class="lbl">Your Display Name (max 15 chars)</label>
-          <input class="inp" id="f-admin" placeholder="How participants see you" maxlength="15">
-          <div class="char-count" id="f-admin-count">0 / 15</div>
+          <label class="lbl">Your Name (max 15 chars)</label>
+          <input class="inp" id="gc-name" placeholder="Your name" maxlength="15">
+          <div class="char-count" id="gc-name-count">0 / 15</div>
         </div>
       </div>
-      <button id="btn-create" class="btn btn-ink" style="width:100%;padding:13px;margin-top:4px">Create Session & Get Link →</button>
+      <button id="guest-create-btn" class="btn btn-ink" style="width:100%;padding:13px;margin-top:4px">Create Session →</button>
     </div>
   </div>
 </div>
 
-<!-- JOIN -->
+<!-- ══════════ ADMIN PANEL ══════════ -->
+<div id="s-admin" class="scr">
+  <div class="topbar">
+    <div class="logo"><div class="logo-mark">☕</div>Admin Panel</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="auth-admin" style="display:flex;align-items:center;gap:8px"></div>
+      <button id="admin-back" class="btn btn-ghost btn-sm">← Home</button>
+    </div>
+  </div>
+  <div class="wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;flex-wrap:wrap;gap:12px">
+      <div><h2>My Sessions</h2><p style="color:var(--g3);margin-top:4px">All sessions you have created — open, closed, or deleted.</p></div>
+      <button id="admin-create-btn" class="btn btn-ink">+ New Session</button>
+    </div>
+    <div id="admin-sessions-list"><div class="empty-state">Loading…</div></div>
+  </div>
+</div>
+
+<!-- ADMIN CREATE MODAL -->
+<div class="overlay" id="admin-create-modal">
+  <div class="modal" style="max-width:500px">
+    <h3 style="margin-bottom:18px">New Session</h3>
+    <div class="fld"><label class="lbl">Session Title</label><input class="inp" id="acm-title" placeholder="e.g. Q2 Sprint 8 Retrospective"></div>
+    <div class="g2">
+      <div class="fld"><label class="lbl">Votes per Person</label><input class="inp" id="acm-votes" type="number" value="3" min="1" max="20"></div>
+      <div class="fld">
+        <label class="lbl">Your Display Name (max 15)</label>
+        <input class="inp" id="acm-name" placeholder="How you appear to participants" maxlength="15">
+        <div class="char-count" id="acm-name-count">0 / 15</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button id="acm-submit" class="btn btn-ink" style="flex:1;padding:12px">Create Session</button>
+      <button id="acm-cancel" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ JOIN ══════════ -->
 <div id="s-join" class="scr">
-  <div class="topbar"><div class="logo"><div class="logo-icon">☕</div>Lean Café</div><button id="join-back" class="btn btn-ghost btn-sm">← Back</button></div>
-  <div class="wrap" style="max-width:460px">
-    <div style="margin-bottom:22px"><h2>Join a Session</h2><p style="color:var(--ink3);margin-top:5px">Enter the code your facilitator shared. No account needed.</p></div>
+  <div class="topbar">
+    <div class="logo"><div class="logo-mark">☕</div>Lean Café</div>
+    <button id="join-back" class="btn btn-ghost btn-sm">← Back</button>
+  </div>
+  <div class="wrap wrap-sm">
+    <div style="margin-bottom:22px"><h2>Join a Session</h2><p style="color:var(--g3);margin-top:5px">Just enter your name — no account needed.</p></div>
     <div class="card">
-      <div class="fld"><label class="lbl">Session Code</label><input class="inp" id="j-code" placeholder="e.g. RETRO-A1B2" style="font-family:var(--mono);letter-spacing:2px;text-transform:uppercase"></div>
+      <div class="fld">
+        <label class="lbl">Session Code</label>
+        <input class="inp" id="j-code" placeholder="e.g. RETRO-A1B2" style="font-family:var(--mono);letter-spacing:2px;text-transform:uppercase">
+        <div style="font-size:11px;color:var(--g4);margin-top:3px">Pre-filled when you use the join link</div>
+      </div>
       <div class="fld">
         <label class="lbl">Your Name (max 15 chars)</label>
         <input class="inp" id="j-name" placeholder="Your name or nickname" maxlength="15">
@@ -1310,85 +1369,113 @@ hr{border:none;border-top:1px solid var(--bdr);margin:28px 0}
   </div>
 </div>
 
-<!-- LINK SHARE -->
+<!-- ══════════ LINK SHARE ══════════ -->
 <div id="s-link" class="scr">
-  <div class="topbar"><div class="logo"><div class="logo-icon">☕</div>Lean Café</div><div class="pbadge"><span class="pdot"></span>Session Ready</div></div>
-  <div class="wrap" style="max-width:640px">
+  <div class="topbar">
+    <div class="logo"><div class="logo-mark">☕</div>Lean Café</div>
+    <div class="pbadge"><span class="pdot"></span>Session Created</div>
+  </div>
+  <div class="wrap wrap-sm" style="max-width:620px">
     <div style="margin-bottom:22px">
-      <div class="lbl" style="margin-bottom:7px">Session Created ✓</div>
+      <div class="lbl" style="margin-bottom:7px">✓ Session ready</div>
       <h2 id="lnk-title"></h2>
-      <p style="color:var(--ink3);margin-top:5px">Share the link with participants before entering the admin panel.</p>
+      <p style="color:var(--g3);margin-top:5px">Share the link below with your team. They can join with just their name — no account needed.</p>
     </div>
     <div class="card" style="margin-bottom:14px">
-      <label class="lbl">Participant Link — share this</label>
-      <div class="lbox"><span id="lnk-url" style="flex:1"></span><button id="btn-copy" class="btn btn-ghost btn-sm">Copy</button></div>
+      <label class="lbl">Join Link — share this with participants</label>
+      <div class="lbox"><span id="lnk-url" style="flex:1"></span><button id="btn-copy-link" class="btn btn-ghost btn-sm">Copy</button></div>
       <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
-        <span style="font-size:12px;color:var(--ink3)">Or share the code:</span>
-        <span id="lnk-code" style="font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:3px;color:var(--ink)"></span>
+        <span style="font-size:12px;color:var(--g3)">Session code:</span>
+        <span id="lnk-code" style="font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:3px;color:var(--g1)"></span>
       </div>
     </div>
-    <div class="card" style="margin-bottom:16px;background:var(--gold-l);border-color:rgba(196,154,60,.3)"><div style="font-size:13px;color:var(--ink2)" id="lnk-meta"></div></div>
-    <button id="btn-go-admin" class="btn btn-ink btn-lg">I've shared the link — Go to Admin Panel →</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button id="lnk-go-admin" class="btn btn-ink btn-lg">Go to Session →</button>
+      <button id="lnk-go-admin-panel" class="btn btn-ghost" style="display:none" id="lnk-admin-panel-btn">← Back to Admin Panel</button>
+    </div>
   </div>
 </div>
 
-<!-- SESSION -->
+<!-- ══════════ SESSION ══════════ -->
 <div id="s-session" class="scr">
   <div class="topbar">
-    <div class="logo"><div class="logo-icon">☕</div><span id="ses-title">Lean Café</span></div>
+    <div class="logo"><div class="logo-mark">☕</div><span id="ses-title" style="font-size:15px;font-weight:700;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span></div>
     <div style="display:flex;align-items:center;gap:10px">
-      <span id="ses-user" style="font-size:13px;color:var(--ink3)"></span>
-      <div class="pbadge"><span class="pdot"></span><span id="ses-phase">Phase 1</span></div>
+      <span id="ses-user" style="font-size:13px;color:var(--g3);font-weight:600"></span>
+      <div class="pbadge"><span class="pdot"></span><span id="ses-phase-label">Phase 1</span></div>
     </div>
   </div>
   <div class="step-bar">
-    <div class="step" id="st-1"><div class="step-c">1</div><span>Write Cards</span></div>
+    <div class="step" id="step-1"><div class="step-c">1</div><span>Write</span></div>
     <div class="step-line"></div>
-    <div class="step" id="st-2"><div class="step-c">2</div><span>Vote</span></div>
+    <div class="step" id="step-2"><div class="step-c">2</div><span>Vote</span></div>
     <div class="step-line"></div>
-    <div class="step" id="st-3"><div class="step-c">3</div><span>Rooms</span></div>
+    <div class="step" id="step-3"><div class="step-c">3</div><span>Discuss</span></div>
     <div class="step-line"></div>
-    <div class="step" id="st-4"><div class="step-c">4</div><span>Discuss</span></div>
-    <div class="step-line"></div>
-    <div class="step" id="st-5"><div class="step-c">5</div><span>Report</span></div>
+    <div class="step" id="step-4"><div class="step-c">4</div><span>Report</span></div>
+    <div style="margin-left:auto;display:flex;gap:8px;padding-bottom:12px;flex-shrink:0">
+      <button id="nav-prev" class="btn btn-ghost btn-sm" style="display:none">← Previous</button>
+      <button id="nav-next" class="btn btn-rust btn-sm" style="display:none">Next Phase →</button>
+    </div>
   </div>
   <div class="wrap" id="phase-area"></div>
 </div>
 
-<!-- ROOM MODAL -->
-<div class="overlay" id="room-overlay">
+<!-- ══════════ DISCUSS MODAL ══════════ -->
+<div class="overlay" id="discuss-modal">
   <div class="modal">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
       <div>
-        <div id="m-lbl" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink4);margin-bottom:3px"></div>
-        <h3 id="m-title" style="font-size:19px;line-height:1.35"></h3>
+        <div id="dm-lbl" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--g4);margin-bottom:3px;font-family:var(--mono);font-weight:700"></div>
+        <h3 id="dm-title" style="font-size:19px;line-height:1.35"></h3>
       </div>
-      <button id="m-close" class="btn btn-ghost btn-sm" style="padding:5px 9px;flex-shrink:0">✕</button>
+      <button id="dm-close" class="btn btn-ghost btn-sm" style="padding:5px 9px;flex-shrink:0">✕</button>
     </div>
-    <div style="background:var(--rust-l);border:1.5px solid rgba(196,82,42,.25);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--ink2);line-height:1.65">
-      📝 <strong>Scribe reminder:</strong> Before filling this in, agree with your group on who the Scribe is. The Scribe types on behalf of the whole group while everyone else discusses in Teams.
+
+    <div style="background:var(--rust-l);border:1.5px solid rgba(196,82,42,.25);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--g2);line-height:1.65">
+      📝 <strong>Scribe note:</strong> Before you start typing, your group should agree on one person to be the Scribe. The Scribe types here while everyone else discusses out loud (e.g. in a Teams breakout room).
     </div>
+
     <div class="fld">
       <label class="lbl">Root Cause — Why does this problem exist?</label>
-      <p style="font-size:12px;color:var(--ink3);margin-bottom:6px">Discuss with your group, then type the agreed root cause. Try asking "Why?" 5 times.</p>
-      <textarea class="txa" id="m-root" placeholder="e.g. We don't have a clear definition of done, which causes rework every sprint because..."></textarea>
+      <p style="font-size:12px;color:var(--g3);margin-bottom:6px">Discuss with your group first. Try asking "Why?" at least 5 times to find the real root cause. Then type the agreed answer here.</p>
+      <textarea class="txa" id="dm-root" placeholder="e.g. We don't have a clear definition of done, which causes rework every sprint because no one checks the acceptance criteria until review..."></textarea>
     </div>
+
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <label class="lbl" style="margin:0">Action Items</label>
-        <button id="m-add-action" class="btn btn-ghost btn-sm">+ Add Action</button>
+        <button id="dm-add-action" class="btn btn-ghost btn-sm">+ Add Action</button>
       </div>
-      <p style="font-size:12px;color:var(--ink3);margin-bottom:10px">⚠️ Every action must have an <strong>assignee</strong> confirmed and agreed by the group before you type their name. Both fields are optional but strongly recommended.</p>
-      <div id="m-actions"></div>
+      <p style="font-size:12px;color:var(--g3);margin-bottom:10px">
+        For each action: <strong>what</strong> needs to happen, <strong>who</strong> is responsible (confirm with them first — max 20 chars), and <strong>by when</strong>. Assignee and due date are optional but strongly recommended — actions without owners rarely get done.
+      </p>
+      <div id="dm-actions"></div>
     </div>
-    <div id="m-warnings" style="margin-bottom:12px"></div>
+
+    <div id="dm-warnings" style="margin-bottom:12px"></div>
     <div style="display:flex;gap:8px">
-      <button id="m-save" class="btn btn-ink">Save & Close</button>
-      <button id="m-cancel" class="btn btn-ghost">Cancel</button>
+      <button id="dm-save" class="btn btn-ink">Save &amp; Close</button>
+      <button id="dm-cancel" class="btn btn-ghost">Cancel</button>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<script>
+// Char counters (non-module)
+document.addEventListener('DOMContentLoaded', () => {
+  [['gc-name','gc-name-count'],['j-name','j-name-count'],['acm-name','acm-name-count']].forEach(([inp,cnt]) => {
+    const i = document.getElementById(inp);
+    const c = document.getElementById(cnt);
+    if (i && c) i.addEventListener('input', () => {
+      const n = i.value.length;
+      c.textContent = `${n} / 15`;
+      c.classList.toggle('warn', n >= 13);
+    });
+  });
+});
+</script>
 </body>
 </html>
